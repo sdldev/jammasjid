@@ -1,0 +1,47 @@
+// Cloudflare Workers configuration - Display Masjid
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "jam-masjid-santrimu",
+  "main": "src/worker.js",
+  "compatibility_date": "2026-08-01",
+  "assets": {
+    "directory": "./public",
+    // All requests go through the Worker first so cache headers can be set;
+    // the Worker then delegates static files to the ASSETS binding.
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "run_worker_first": true
+  },
+  // Create the KV namespace with: npx wrangler kv namespace create DATABASE
+  "kv_namespaces": [
+    {
+      "binding": "DATABASE",
+      "id": "234fb1ad012c4b9c9d25c3df980f37ec"
+    }
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "HUB",
+        "class_name": "DisplayHub"
+      }
+    ]
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["DisplayHub"]
+    }
+  ],
+  "observability": {
+    "enabled": true
+  },
+  // Import the HTML template as a string
+  "rules": [
+    {
+      "type": "Text",
+      "globs": ["**/*.html"],
+      "fallthrough": false
+    }
+  ]
+}

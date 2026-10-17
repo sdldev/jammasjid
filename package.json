@@ -1,0 +1,21 @@
+{
+  "name": "jam-masjid-santrimu",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Jam Masjid Santrimu - jam digital & jadwal sholat untuk layar masjid (runtime lokal Bun; deploy Cloudflare Workers)",
+  "engines": {
+    "bun": ">=1.1"
+  },
+  "scripts": {
+    "dev": "bun x wrangler dev --port 11111",
+    "deploy": "bun x wrangler deploy",
+    "seed": "bun scripts/seed.mjs",
+    "test": "bun --bun x vitest run",
+    "test:watch": "bun --bun x vitest",
+    "start": "bun src/server.mjs"
+  },
+  "devDependencies": {
+    "vitest": "^3.2.4",
+    "wrangler": "^4.103.0"
+  }
+}

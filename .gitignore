@@ -1,0 +1,23 @@
+node_modules/
+# Lockfile npm jangan di-commit: bun.lock adalah sumber kebenaran
+package-lock.json
+.wrangler/
+.dev.vars
+.env
+*.log
+.DS_Store
+test-results/
+playwright-report/
+# Artefak verifikasi (screenshot & snapshot browser)
+.playwright-mcp/
+display-check.png
+# State operasional OMC
+.omc/
+# Screenshot verifikasi
+*-vanilla.png
+logo-*.png
+# Metadata editor gambar (Digikam dkk)
+**/.comments/
+# Screenshot verifikasi di root
+/*.png
+.zcode/

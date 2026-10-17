@@ -1,0 +1,30 @@
+# Autostart Jam Masjid Santrimu on Linux/Armbian via systemd.
+# 1. Install Bun: curl -fsSL https://bun.sh/install | bash
+# 2. Adjust WorkingDirectory, User & the ExecStart path below.
+# 3. Copy:   sudo cp deploy/masjid-display.service /etc/systemd/system/
+# 4. Enable: sudo systemctl enable --now masjid-display
+# 5. Logs:   journalctl -u masjid-display -f
+#
+# Kiosk browser: pakai deploy/masjid-kiosk.service (unit terpisah, berisi semua
+# flag anti-gangguan: autoplay, Terjemahkan?, balon update, popup first-run).
+# Lihat README bagian "Kiosk browser (Chromium)" untuk penjelasan tiap flag.
+
+[Unit]
+Description=Jam Masjid Santrimu - jam digital & jadwal sholat (server lokal Bun)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/jam-masjid
+ExecStart=/root/.bun/bin/bun src/server.mjs
+Restart=on-failure
+RestartSec=5
+User=root
+Environment=NODE_ENV=production
+# Environment=PORT=11111
+# AUTH_SECRET can also live in a .env file inside WorkingDirectory
+# Environment=AUTH_SECRET=replace-with-a-long-random-string
+
+[Install]
+WantedBy=multi-user.target

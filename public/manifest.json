@@ -1,0 +1,20 @@
+{
+  "name": "Jam Masjid Santrimu",
+  "short_name": "Masjid Santrimu",
+  "description": "Jam digital & jadwal sholat Masjid Santrimu",
+  "id": "/",
+  "start_url": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#080d15",
+  "theme_color": "#0d9488",
+  "lang": "id",
+  "icons": [
+    {
+      "src": "/img/logo.webp",
+      "sizes": "354x328",
+      "type": "image/webp",
+      "purpose": "any"
+    }
+  ]
+}

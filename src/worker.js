@@ -1,0 +1,66 @@
+// Jam Masjid Santrimu - Cloudflare Worker entrypoint
+// Router: GET / (display), POST /api/proses (API), GET /api/events (SSE)
+
+import { DisplayHub } from './displayHub.js'
+import { renderDisplay } from './lib/render.js'
+import { handleProses } from './lib/proses.js'
+import { storeFromEnv as logoStoreFromEnv } from './lib/logoStore.js'
+// The HTML template is imported as a string via wrangler Rules (type: Text)
+import template from './templates/index.html'
+
+export { DisplayHub }
+
+// Static assets (media + css/js) almost never change → 30-day browser
+// cache so they are not revalidated on every page load.
+// NOTE: the display reloads on db change (SSE), so stale css/js is not an issue
+// for the screen itself; a deploy of NEW assets still needs a cache-bust
+// (rename) or the browser may serve the old file up to 30 days.
+const MEDIA_CACHE_PATTERN = /\.(jpe?g|png|gif|webp|otf|ttf|woff2?|mp3|css|js|json)$/i
+const MEDIA_CACHE_CONTROL = 'public, max-age=2592000'
+
+export default {
+  async fetch(request, env) {
+    const url = new URL(request.url)
+
+    if (url.pathname === '/' && request.method === 'GET') {
+      return renderDisplay(env, template)
+    }
+
+    if (url.pathname === '/api/proses' && request.method === 'POST') {
+      return handleProses(request, env)
+    }
+
+    if (url.pathname === '/api/events' && request.method === 'GET') {
+      const hubId = env.HUB.idFromName('display')
+      return env.HUB.get(hubId).fetch(request)
+    }
+
+    // Logo image (KV backend; file backend di mode lokal disajikan serveStatic
+    // langsung dari public/img). Cache 30 hari — versi diganti lewat ?v= di URL.
+    const logoMatch = url.pathname.match(/^\/logo\/(left|right)$/)
+    if (logoMatch && request.method === 'GET') {
+      const store = logoStoreFromEnv(env)
+      const data = store && store.backend === 'kv' ? await store.load(logoMatch[1]) : null
+      if (!data) return new Response('Not found', { status: 404 })
+      return new Response(data.buffer, {
+        headers: {
+          'Content-Type': data.contentType,
+          'Cache-Control': MEDIA_CACHE_CONTROL
+        }
+      })
+    }
+
+    // Fall back to static assets
+    const response = await env.ASSETS.fetch(request)
+    if (response.status === 200 && MEDIA_CACHE_PATTERN.test(url.pathname)) {
+      const headers = new Headers(response.headers)
+      headers.set('Cache-Control', MEDIA_CACHE_CONTROL)
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      })
+    }
+    return response
+  }
+}

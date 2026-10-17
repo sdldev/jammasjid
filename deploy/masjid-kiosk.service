@@ -1,0 +1,52 @@
+# Autostart Chromium kiosk untuk Jam Masjid Santrimu (Linux/Armbian, X11/Wayland).
+#
+# 1. Sesuaikan User, Environment=DISPLAY / XAUTHORITY, dan path browser.
+# 2. Copy:   sudo cp deploy/masjid-kiosk.service /etc/systemd/system/
+# 3. Enable: sudo systemctl enable --now masjid-kiosk
+# 4. Logs:   journalctl -u masjid-kiosk -f
+#
+# Flag penting (lihat README "Kiosk browser"):
+#   --kiosk                              layar penuh tanpa UI browser
+#   --autoplay-policy=...                beep adzan/iqomah tanpa sentuhan pengguna
+#   --disable-features=Translate,...     matikan bar "Terjemahkan halaman ini?"
+#   --lang / --accept-lang               browser berbahasa Indonesia → tak ada tawaran terjemahan
+#   --disable-component-update           hentikan balon "Chrome versi baru"
+#   --disable-notifications              cegah notifikasi sistem dari web
+#   --no-first-run --no-default-browser-check  cegah wizard & popup browser default
+#   --user-data-dir=...                  profil persisten agar cache 30 hari bekerja
+#                                        (JANGAN pakai --incognito: cache dibuang tiap start)
+#
+# Catatan: unit ini TIDAK memasang display manager. Di STB headless, jalankan
+# minimal X (xinit/openbox) atau Wayland compositor (cage/sway) lebih dulu.
+
+[Unit]
+Description=Jam Masjid Santrimu - Chromium kiosk
+After=masjid-display.service graphical.target
+Wants=masjid-display.service
+# Tunggu server lokal siap sebelum membuka browser
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do curl -sf http://localhost:11111/ >/dev/null && exit 0; sleep 1; done; exit 1'
+
+[Service]
+Type=simple
+User=root
+# X11 (sesuaikan bila memakai Wayland/cage)
+Environment=DISPLAY=:0
+Environment=XAUTHORITY=/root/.Xauthority
+ExecStart=/usr/bin/chromium \
+  --kiosk \
+  --disable-pinch \
+  --autoplay-policy=no-user-gesture-required \
+  --disable-features=Translate,TranslateUI \
+  --lang=id-ID \
+  --accept-lang=id-ID,id \
+  --disable-component-update \
+  --disable-notifications \
+  --no-first-run \
+  --no-default-browser-check \
+  --user-data-dir=/opt/jam-masjid/.chrome-kiosk \
+  http://localhost:11111/
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=graphical.target

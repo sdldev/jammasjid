@@ -1,0 +1,442 @@
+/* ============================================================
+   Admin dashboard — mobile-native design system (phone-first)
+   Vanilla CSS, no framework. iOS Settings-style pattern:
+   grouped list → drill into a section page → back.
+   ============================================================ */
+
+:root {
+  /* Colors: teal-green matching the display + gold accents */
+  --accent: #0d9488;
+  --accent-dark: #0f766e;
+  --accent-soft: #ccfbf1;
+  --gold: #e2ad00;
+  --danger: #dc2626;
+  --danger-soft: #fee2e2;
+  --bg: #f2f4f6;
+  --card: #ffffff;
+  --line: #e5e7eb;
+  --text: #1f2937;
+  --muted: #6b7280;
+
+  /* Touch target sizes */
+  --row-h: 52px;
+  --input-h: 48px;
+  --btn-h: 50px;
+  --radius: 14px;
+  --header-h: 52px;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  font-size: 16px; /* ≥16px prevents iOS auto-zoom when focusing inputs */
+  line-height: 1.45;
+}
+
+/* Shell: content capped at phone width, centered on desktop */
+.shell {
+  max-width: 560px;
+  margin: 0 auto;
+  padding: 0 16px;
+  padding-top: calc(var(--header-h) + env(safe-area-inset-top) + 12px);
+  padding-bottom: calc(24px + env(safe-area-inset-bottom));
+}
+
+/* ---------- Header bar ---------- */
+.appbar {
+  position: fixed;
+  top: 0; left: 0; right: 0;
+  z-index: 20;
+  height: calc(var(--header-h) + env(safe-area-inset-top));
+  padding: env(safe-area-inset-top) 16px 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.85);
+  -webkit-backdrop-filter: blur(12px);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+.appbar-inner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  max-width: 560px;
+  margin: 0 auto;
+  min-height: var(--header-h);
+}
+.appbar-title {
+  font-size: 17px;
+  font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.appbar-actions { display: flex; gap: 8px; align-items: center; }
+.icon-btn {
+  width: 40px; height: 40px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 0; background: none; cursor: pointer;
+  color: var(--accent); font-size: 20px;
+  border-radius: 10px;
+}
+.icon-btn:active { background: var(--accent-soft); }
+.icon-btn svg { width: 22px; height: 22px; }
+
+/* ---------- Grouped list (iOS Settings style) ---------- */
+.group-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin: 20px 4px 6px;
+}
+.group-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.row-link {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-height: var(--row-h);
+  padding: 8px 14px;
+  text-decoration: none;
+  color: var(--text);
+  font-size: 16px;
+  cursor: pointer;
+}
+.row-link + .row-link { border-top: 1px solid var(--line); }
+.row-link:active { background: #f3f4f6; }
+.row-icon {
+  width: 32px; height: 32px;
+  flex: none;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+}
+.row-icon svg { width: 18px; height: 18px; }
+.row-icon.gold { background: #fef3c7; color: #b45309; }
+.row-icon.red { background: var(--danger-soft); color: var(--danger); }
+.row-text { flex: 1; min-width: 0; }
+.row-title { font-weight: 500; }
+.row-sub { font-size: 13px; color: var(--muted); margin-top: 1px; }
+.row-value { color: var(--muted); font-size: 14px; }
+.chevron {
+  flex: none;
+  color: #c3c7cd;
+  font-size: 18px;
+  line-height: 1;
+}
+
+/* ---------- Section page ---------- */
+.page { display: none; }
+.page.active { display: block; }
+.back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--accent);
+  font-size: 15px;
+  font-weight: 600;
+  text-decoration: none;
+  padding: 6px 0;
+}
+.page-title {
+  font-size: 22px;
+  font-weight: 800;
+  margin: 4px 0 16px;
+}
+
+/* ---------- Form ---------- */
+.card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+}
+.card + .card { margin-top: 12px; }
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+.field label {
+  display: block;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-bottom: 6px;
+}
+.field .input {
+  display: block;
+  width: 100%;
+  height: var(--input-h);
+  padding: 0 14px;
+  font-size: 16px;
+  font-family: inherit;
+  color: var(--text);
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  outline: none;
+  transition: border-color 0.15s, box-shadow 0.15s;
+  -webkit-appearance: none;
+  appearance: none;
+}
+.field .input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(13,148,136,0.15);
+}
+textarea.input { height: auto; min-height: 72px; padding: 12px 14px; resize: vertical; }
+.input.arabic { direction: rtl; font-size: 18px; }
+.field-note { font-size: 12px; color: var(--muted); margin-top: 6px; }
+
+/* Segmented control (dst: 0/1/Auto) */
+.segmented { display: flex; gap: 6px; }
+.segmented button {
+  flex: 1;
+  height: 44px;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  border-radius: 10px;
+  font-size: 15px;
+  color: var(--text);
+  cursor: pointer;
+}
+.segmented button.active {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ---------- Toggle switch ---------- */
+.switch { position: relative; display: inline-flex; width: 52px; height: 30px; flex: none; }
+.switch input { position: absolute; opacity: 0; width: 100%; height: 100%; margin: 0; cursor: pointer; }
+.switch .track {
+  position: absolute; inset: 0;
+  background: #d1d5db;
+  border-radius: 15px;
+  transition: background 0.2s;
+  pointer-events: none;
+}
+.switch .track::after {
+  content: "";
+  position: absolute;
+  top: 2px; left: 2px;
+  width: 26px; height: 26px;
+  background: #fff;
+  border-radius: 50%;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.25);
+  transition: transform 0.2s;
+}
+.switch input:checked + .track { background: var(--accent); }
+.switch input:checked + .track::after { transform: translateX(22px); }
+
+/* Row containing label + switch */
+.switch-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0;
+}
+.switch-row .switch-label { font-size: 16px; font-weight: 500; }
+
+/* ---------- Stepper (− input +) ---------- */
+.stepper { display: flex; align-items: stretch; gap: 8px; }
+.stepper button {
+  width: 44px;
+  height: var(--input-h);
+  flex: none;
+  border: 1px solid var(--line);
+  background: #f8fafc;
+  border-radius: 12px;
+  font-size: 22px;
+  color: var(--accent-dark);
+  cursor: pointer;
+}
+.stepper button:active { background: var(--accent-soft); }
+.stepper .input {
+  flex: 1;
+  height: var(--input-h);
+  text-align: center;
+  font-size: 16px;
+  background: #f8fafc;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  -webkit-appearance: none;
+  outline: none;
+}
+
+/* ---------- Buttons ---------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  height: var(--btn-h);
+  border: 0;
+  border-radius: 12px;
+  font-size: 16px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  text-decoration: none;
+  transition: filter 0.15s;
+}
+.btn:active { filter: brightness(0.92); }
+.btn-primary { background: var(--accent); color: #fff; }
+.btn-danger { background: var(--danger); color: #fff; }
+.btn-ghost { background: #fff; color: var(--text); border: 1px solid var(--line); }
+.btn-block { margin-top: 16px; }
+.btn-sm { height: 40px; width: auto; padding: 0 16px; font-size: 14px; }
+
+/* ---------- Card list item (info / running text) ---------- */
+.list-card {
+  background: var(--card);
+  border-radius: var(--radius);
+  padding: 16px;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+  margin-bottom: 12px;
+}
+.list-card-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+.list-card-title { font-size: 14px; font-weight: 700; color: var(--muted); }
+.delete-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  border: 0; background: var(--danger-soft); color: var(--danger);
+  height: 34px; padding: 0 12px; border-radius: 9px;
+  font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.add-card {
+  border: 1.5px dashed #cbd5e1;
+  background: transparent;
+  box-shadow: none;
+}
+
+/* ---------- Bottom toast ---------- */
+.toast {
+  position: fixed;
+  left: 50%;
+  transform: translate(-50%, 20px);
+  bottom: calc(20px + env(safe-area-inset-bottom));
+  z-index: 50;
+  max-width: min(92vw, 480px);
+  padding: 12px 18px;
+  border-radius: 12px;
+  font-size: 15px;
+  font-weight: 500;
+  color: #fff;
+  background: #1f2937;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.25);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s, transform 0.25s;
+}
+.toast.show { opacity: 1; transform: translate(-50%, 0); }
+.toast.success { background: var(--accent-dark); }
+.toast.danger { background: var(--danger); }
+.toast.warning { background: #b45309; }
+
+/* ---------- Login ---------- */
+.login-wrap {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: var(--card);
+  border-radius: 20px;
+  padding: 28px 24px;
+  box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+  text-align: center;
+}
+.login-icon {
+  width: 64px; height: 64px;
+  margin: 0 auto 14px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--accent-soft);
+  color: var(--accent-dark);
+  border-radius: 18px;
+}
+.login-icon svg { width: 34px; height: 34px; }
+.login-title { font-size: 20px; font-weight: 800; margin: 0 0 4px; }
+.login-sub { font-size: 14px; color: var(--muted); margin: 0 0 22px; }
+.login-card .field { text-align: left; }
+
+/* ---------- App footer ---------- */
+.app-footer {
+  margin-top: 24px;
+  display: flex;
+  gap: 10px;
+}
+.app-footer .btn { flex: 1; height: 44px; font-size: 14px; }
+
+/* ---------- 2-tap reset confirmation ---------- */
+.confirm-box { display: none; gap: 8px; margin-top: 12px; }
+.confirm-box.show { display: flex; }
+.confirm-box .btn { flex: 1; height: 44px; }
+
+/* ---------- Treasury balance row (read-only) ---------- */
+.kas-saldo {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 14px 16px;
+  margin: 4px 0 0;
+  background: var(--accent-soft);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius);
+  font-size: 15px;
+  color: var(--accent-dark);
+}
+.kas-saldo strong { font-size: 18px; }
+
+/* ===================== Logo masjid (kiri/kanan judul) ===================== */
+.logo-preview{
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  min-height:80px;
+  padding:8px;
+  border:1px dashed var(--muted);
+  border-radius:var(--radius);
+  /* Latar belakang abu bergaris agar logo putih tetap terlihat */
+  background:
+    linear-gradient(45deg, #eee 25%, transparent 25%, transparent 75%, #eee 75%),
+    linear-gradient(45deg, #eee 25%, #fafafa 25%, #fafafa 75%, #eee 75%);
+  background-size:16px 16px;
+  background-position:0 0, 8px 8px;
+}
+.logo-preview img{ max-height:80px; max-width:100%; object-fit:contain; }
+.logo-empty{ color:var(--muted); font-size:13px; }
+.btn-row{ display:flex; gap:8px; margin-top:10px; }
+.btn-row .btn{ flex:1; }
+/* Info preview sementara (belum diunggah) di bawah gambar */
+.logo-preview{ flex-direction:column; gap:6px; }
+.logo-pending{
+  font-size:12px;
+  color:#b45309;	/* amber: menunggu tindakan */
+  background:#fffbeb;
+  padding:3px 10px;
+  border-radius:12px;
+}

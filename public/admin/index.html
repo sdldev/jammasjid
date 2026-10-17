@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <!-- Jangan diindeks/diikuti mesin pencari -->
+  <meta name="robots" content="noindex, nofollow">
+  <title>Admin - Jam Masjid Santrimu</title>
+  <link rel="icon" type="image/webp" href="/img/bg-pattern-01.webp">
+  <!-- ?v= cache-busting: asset di-cache browser 30 hari; naikkan versi saat deploy perubahan CSS/JS -->
+  <link href="/admin/style.css?v=2" rel="stylesheet">
+</head>
+<body>
+  <!-- ================= LOGIN ================= -->
+  <div id="view-login" class="login-wrap" style="display:none">
+    <div class="login-card">
+      <div class="login-icon">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
+        </svg>
+      </div>
+      <h1 class="login-title">Jam Masjid Santrimu</h1>
+      <p class="login-sub">Masuk untuk mengatur tampilan masjid</p>
+      <form id="form-login">
+        <div class="field">
+          <label>Username</label>
+          <input class="input" name="user" required autocomplete="username" inputmode="text" enterkeyhint="next">
+        </div>
+        <div class="field">
+          <label>Password</label>
+          <input class="input" name="pass" type="password" required autocomplete="current-password" enterkeyhint="done">
+        </div>
+        <button class="btn btn-primary btn-block" type="submit">Masuk</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- ================= APP ================= -->
+  <div id="view-app" style="display:none">
+    <header class="appbar">
+      <div class="appbar-inner">
+        <span id="appbar-back"></span>
+        <span class="appbar-title" id="appbar-title">Jam Masjid Santrimu</span>
+        <span class="appbar-actions">
+          <a class="icon-btn" href="/" target="_blank" title="Lihat display" aria-label="Lihat display">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="4" width="20" height="13" rx="2"/><path d="M8 21h8M12 17v4"/>
+            </svg>
+          </a>
+          <button class="icon-btn" id="btn-logout" title="Logout" aria-label="Logout">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><path d="M16 17l5-5-5-5M21 12H9"/>
+            </svg>
+          </button>
+        </span>
+      </div>
+    </header>
+    <main class="shell" id="app-container"></main>
+  </div>
+
+  <div class="toast" id="toast"></div>
+
+  <script src="/masjid/jquery-3.4.1.min.js?v=1"></script>
+  <script src="/admin/app.js?v=4"></script>
+</body>
+</html>

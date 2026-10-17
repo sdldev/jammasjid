@@ -1,0 +1,752 @@
+/* =================== 1. Fonts =================== */
+@font-face {
+	font-family: 'Inter';
+	src: url('/fonts/inter/inter-var-latin.woff2') format('woff2-variations');
+	font-weight: 100 900;
+	font-style: normal;
+	font-display: swap;
+}
+@font-face {
+	font-family: 'Sketsaramadhan';
+	src: url('/fonts/Sketsaramadhan-nRLAO.otf') format('opentype');
+	font-weight: normal;
+	font-style: normal;
+}
+
+
+/* =================== 2. Design Tokens =================== */
+:root{
+	/* Colors */
+	--color-teal: #33cccc;          /* schedule accent & clock seconds */
+	--color-gold: #e2ad00;          /* plus icon & running-text separators */
+	--color-overlay-bg: #000;       /* overlay background: sama dengan main (hitam penuh) */
+	--color-overlay-text: #aab;     /* overlay text/title (brighter for distance viewing) */
+	--color-white: #fff;
+	--color-black: #000;
+	--color-teal-rgb: 13,148,136;   /* for rgba(var(--color-teal-rgb), .15) */
+
+	/* Typography */
+	--font-main: 'Inter', Helvetica, Arial, sans-serif;
+	--font-logo: 'Sketsaramadhan', 'Inter', sans-serif;
+
+	/* Layering (centralized documentation; values as of now) */
+	--z-main: 1; --z-overlay: 99;
+	--z-iqomah: 101; --z-fs-clock: 102; --z-preloader: 99;
+
+	/* Motion */
+	--dur-flip: 0.9s;
+	--dur-rt: 30s;   /* base duration; the real duration is set by JS via animation-duration */
+}
+
+
+/* =================== 3. Base =================== */
+* { box-sizing: border-box; }
+
+body {
+	padding: 0;
+	margin: 0;
+	font-family: var(--font-main);
+	/* Solid black background: wallpaper carousel removed to keep rendering light */
+	background-color: var(--color-black);
+}
+
+h1,h2,h3,h4,h5{
+	color: #333;
+}
+
+
+/* =================== 4. Full-screen Overlays =================== */
+.full-screen {
+	position: fixed;
+	top:0;
+	left:0;
+	right:0;
+	bottom:0;
+	background-color: var(--color-overlay-bg);
+	/* background-image: url(../img/bg-kubah.webp); */
+	background-size: cover;
+	background-position: center top;
+	background-repeat: no-repeat;
+	z-index: var(--z-overlay);
+	color: var(--color-white);
+}
+
+/* The iqomah overlay MUST sit above the adhan overlay when they briefly overlap
+   (fadeOut adzan 800ms berjalan bersamaan dengan fadeIn iqomah).
+   Tanpa ini adzan (lebih bawah di DOM, z sama 99) menutupi digit iqomah. */
+#count-down{ z-index: var(--z-iqomah); }
+
+/* =================== 5. Overlay Text & Title =================== */
+#display-adzan>div{
+	position: absolute;
+	transform: translate(-50%, -50%);
+	color: var(--color-overlay-text);
+	text-shadow: 0.3vw 0.3vw 0 rgba(0,0,0,.5);
+	padding: 0 3vw;
+	width: 100%;
+	text-align: center;
+	text-transform: uppercase;
+	font-family: var(--font-main);
+	/* Specific override: vertical position & font-size.
+	   left:50% WAJIB berpasangan dengan translate(-50%,-50%) agar teks
+	   ter-center horizontal; tanpa ini kotak absolute menempel kiri (left:0)
+	   lalu tergeser -50% sehingga teks keluar layar. */
+	top: 50%;
+	left: 50%;
+	font-size:10vw;
+}
+
+
+#count-down .counter,
+#right-counter .counter {
+	font-variant-numeric: tabular-nums;
+	color: var(--color-white);
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	width: 100%;
+	padding: 0 3vw;
+	text-align: center;
+	text-transform: uppercase;
+	font-family: var(--font-main);
+}
+#count-down .counter>h1,
+#right-counter .counter>h1{
+	margin: 0 auto;
+	font-size:7vh;
+	line-height:9vh;
+	width:61.5vw;
+	color: var(--color-overlay-text);
+	/* Tanpa border/pill: judul menyatu dengan latar hitam seperti tampilan utama */
+	border: 0;
+	border-radius: 0;
+	font-family: var(--font-main);
+	font-weight:700;
+}
+/* MINUTES/SECONDS labels (gray pill) below the digits */
+#count-down .counter>div>span,
+#right-counter .counter>div>span{
+	background:var(--color-overlay-text);
+	font-size:7vh;
+	line-height:9vh;
+	font-weight:700;
+	text-shadow: none;
+	color:var(--color-black);
+	display: block;
+	border-radius: 1vh;
+}
+
+
+/* =================== 6. Counter & Flip Digit =================== */
+/* Big number cards: each digit is its own card so it can flip independently */
+#count-down .counter .flip-digit,
+#right-counter .counter .flip-digit{
+	display:inline-block;
+	width:17vw;
+	font-size:35vh;
+	line-height:38vh;
+	margin:0 0.4vw;
+	color:var(--color-white);
+	text-shadow: 1px 1px 0 rgba(0,0,0,.75);
+	background: linear-gradient(180deg, rgba(255,255,255,0.10) 0%, rgba(255,255,255,0.03) 48%, rgba(0,0,0,0.18) 52%, rgba(0,0,0,0.12) 100%);
+	border-radius: 1vh;
+	transform-origin: center bottom;
+	backface-visibility: hidden;
+	box-shadow: inset 0 -0.2vh 0 rgba(0,0,0,.35), inset 0 0.2vh 0 rgba(255,255,255,.08);
+}
+#count-down .counter .flip-digit.flip-anim,
+#right-counter .counter .flip-digit.flip-anim{
+	animation: flip-digit-in var(--dur-flip) cubic-bezier(.3,.9,.4,1.1) 1;
+}
+/* MINUTES/SECONDS labels keep the old style (inherit the >span rules above) */
+#count-down .counter>div>.flip-label,
+#right-counter .counter>div>.flip-label{
+	margin-top:7vh;
+	padding:0.8vh 3vw;
+}
+
+/* Flip counter layout: title on a full row, then the minutes &
+   detik berdampingan dengan gap seragam. Semua jarak via gap (bukan
+   margin) supaya proporsional: digit-digit, digit-colon, menit-detik. */
+#count-down .counter,
+#right-counter .counter{
+	display:flex;
+	flex-wrap:wrap;
+	justify-content:center;
+	column-gap:1vw;	/* gap between the minutes & seconds groups */
+}
+#count-down .counter>h1,
+#right-counter .counter>h1{
+	flex:0 0 100%;	/* title stays on a full row above */
+	margin-bottom:8vh;
+}
+#count-down .counter>div.ii,
+#count-down .counter>div.ss,
+#right-counter .counter>div.ii,
+#right-counter .counter>div.ss{
+	flex:0 0 auto;
+	width:auto;	/* override width:29vw from the old box base rule */
+	margin:0;
+	text-align:center;
+}
+#count-down .counter .flip-row,
+#right-counter .counter .flip-row{
+	display:flex;
+	align-items:center;
+	gap:0.4vw;	/* uniform gap between digits & colon */
+}
+#count-down .counter .flip-digit,
+#right-counter .counter .flip-digit{
+	margin:0;
+}
+/* The colon stands alone BETWEEN the minutes & seconds groups so spacing
+   kiri-kanannya seragam (column-gap container). line-height dibuat sama
+   dengan tinggi kartu digit (38vh) sehingga tengah vertikal otomatis. */
+#count-down .counter>.flip-colon,
+#right-counter .counter>.flip-colon{
+	flex:0 0 auto;
+	align-self:flex-start;
+	margin-top:0;	/* line-height 38vh = digit card height → automatic vertical centering */
+	font-size:20vh;
+	line-height:38vh;
+	color:var(--color-white);
+	text-shadow: 1px 1px 0 rgba(0,0,0,.75);
+}
+
+/* Flip animation: the card falls from upright to flat each time the value changes */
+@keyframes flip-digit-in{
+	0%   { transform: rotateX(-90deg); opacity:.4; }
+	60%  { transform: rotateX(12deg);  opacity:1; }
+	100% { transform: rotateX(0deg);   opacity:1; }
+}
+/* Reduce heavy animation when the user prefers reduced motion */
+@media (prefers-reduced-motion: reduce){
+	#count-down .counter .flip-digit.flip-anim,
+	#right-counter .counter .flip-digit.flip-anim{
+		animation: none;
+	}
+	#net-banner{
+		animation: none;
+	}
+	#preloader #status{
+		animation: none;
+	}
+	#running-text .rt-track{
+		animation: none;
+	}
+}
+
+/* Right-screen counter (corner clock during pre-adhan): reuses the counter base */
+#right-counter{
+	position:fixed;
+	top:0;
+	right:0;
+	bottom:0;
+	left:0;
+	/* Background matches other overlays (.full-screen): solid var(--color-overlay-bg) */
+	background-color : var(--color-overlay-bg);
+	z-index:1;
+}
+
+
+/* =================== 7. Preloader & Skeleton =================== */
+#preloader {
+	position: fixed;
+	top:0;
+	left:0;
+	right:0;
+	bottom:0;
+	background-color:var(--color-black);
+	z-index:var(--z-preloader);
+}
+
+#status {
+	width:64px;
+	height:64px;
+	position:absolute;
+	left:50%;
+	top:50%;
+	margin:-32px 0 0 -32px;
+	border:5px solid rgba(var(--color-teal-rgb),0.15);
+	border-top-color:var(--color-teal);
+	border-radius:50%;
+	animation: preloader-spin 0.9s linear infinite;
+}
+@keyframes preloader-spin {
+	to { transform: rotate(360deg); }
+}
+
+/* Skeleton — blinking placeholder for data not yet loaded (clock,
+   tanggal, jadwal sholat). Dihapus JS (class "skel") setelah data terisi. */
+.skel {
+	color: transparent !important;
+	text-shadow: none !important;
+	border-radius: 4px;
+	animation: skel-pulse 1.2s ease-in-out infinite;
+}
+.skel > span { visibility: hidden; }
+@keyframes skel-pulse {
+	0%, 100% { background-color: rgba(255,255,255,0.08); }
+	50% { background-color: rgba(255,255,255,0.22); }
+}
+
+
+/* =================== 8. Main Layout =================== */
+#main{
+	position:fixed;
+	top:0;
+	left:0;
+	right:0;
+	bottom:6vw;
+	display:flex;
+	flex-direction:column;
+	z-index: var(--z-main);
+}
+/* Safe centering: margin auto absorbs leftover space (content centered),
+   tapi menjadi 0 saat konten melebihi layar sehingga atasnya tidak terpotong.
+   Baris logo pakai margin-top tetap (bukan auto) agar nama masjid duduk dekat
+   atas; sisa ruang diserap margin-bottom:auto milik #columns. */
+#main > #logo-row{ margin-top: 2vw; }
+#main > #columns{ margin-bottom:auto; }
+#columns{
+	display:flex;
+	align-items:center;
+	gap:4vw;
+	padding:2vw 6vw 0;
+}
+#columns > #jadwal{ flex: 11; }
+#columns > #clock{ flex: 9; }
+#clock{ text-align:center; }
+
+
+/* =================== 9. Clock & Date =================== */
+#jam{
+	font-variant-numeric: tabular-nums;
+	display:inline-block;
+	font-size:10vw;
+	line-height: 0.8;
+	text-align: left;
+	margin:1vw 0 0 0;
+	padding-right:3vw;
+	font-family: var(--font-main);
+	font-weight:700;
+	color:var(--color-white);
+	position:relative;
+}
+#jam div{
+	position:absolute;
+	top:0.1vw;
+	right:0;
+	color:var(--color-teal);
+	line-height: 0.8;
+	width:2.4vw;
+	font-size:2.4vw;
+	font-family: var(--font-main);
+	border-left: 0.7px solid rgba(255,255,255,0.6);
+}
+#tgl{
+	text-align: center;
+	color:var(--color-white);
+	font-size:2vw;
+	margin: 1.5vh auto 0;
+	font-weight:700;
+	position:relative;
+}
+#tgl:after{
+	display: block;
+	content: "";
+	position:absolute;
+	height:6vw;
+	width:20vw;
+	bottom: -5.8vw;
+	left:50%;
+	transform:translateX(-50%);
+	background-image: url(../img/clock-line.webp);
+	background-size: contain;
+	background-position: center center;
+	background-repeat: no-repeat;
+}
+
+
+/* =================== 10. Prayer Schedule =================== */
+#jadwal{
+	color:var(--color-teal);
+	padding:0;
+	margin: 0 auto;
+	font-weight:700;
+	width:100%;
+}
+#jadwal .row{
+	display:flex;
+	align-items:center;
+}
+#jadwal .jadwal-nama{
+	font-size:3.7vw;
+	padding-top:1vh;
+	position:relative;
+	padding-left:2vw;
+	width:50%;
+	color:var(--color-white);
+}
+#jadwal .jadwal-waktu{
+	font-size:3.7vw;
+	font-weight:700;
+	text-align:right;
+	padding-right:1vw;
+	width:50%;
+	position:relative;
+	color:var(--color-white);
+}
+#jadwal .jadwal-waktu span{
+	position:absolute;
+	right:0vw;
+	top:0.5vw;
+	font-size:1vw;
+	color:var(--color-gold);
+	padding: 0 5px;
+	border-radius:1px;
+}
+
+#jadwal .active{
+	border-radius:0.5vw;
+	overflow:hidden;
+	background-color : var(--color-white);
+	color:var(--color-white);
+	font-weight:700;
+}
+
+#jadwal .active .jadwal-nama{
+	font-weight:700;
+	font-size:4.5vw;
+	color : var(--color-black);
+	padding-top:0.2vh;
+}
+
+#jadwal .active .jadwal-waktu{
+	font-weight:700;
+	font-size:4.5vw;
+	padding-top:0.2vh;
+	color : var(--color-black);
+}
+
+
+/* =================== 11. Running Text =================== */
+#running-text{
+	height:4vw;
+	width:97vw;
+	color:var(--color-black);
+	background-color: var(--color-black);
+	opacity: 1;
+	position:fixed;
+	bottom:2vh;
+	right:1.5vw;
+	left:1.5vw;
+	border-radius:5px;
+}
+
+#running-text .item i{
+	color:var(--color-gold);
+	margin-left: 20px;
+	margin-right: 7px;
+	font-size: 2vw;
+}
+#running-text .item{
+	position: absolute;
+	left: 0.5vw;
+	right: 0.5vw;
+	height:100%;
+	overflow: hidden;
+	color:var(--color-white);
+	font-family: var(--font-main);
+	padding-top: 0.05vw;
+	font-size: 2.8vw;
+	white-space: nowrap;
+	font-height: bold;
+}
+
+/* ============== Mosque name logo (vanilla, replaces PNG) ============== */
+/* Baris logo: gambar opsional kiri/kanan + nama masjid di tengah.
+   Tanpa logo, flex hanya berisi nama → tampilan identik dengan sebelumnya. */
+#logo-row{
+	display:flex;
+	align-items:center;
+	justify-content:center;
+	gap:3vw;
+	margin-top:2vw;		/* dipindah dari #main > #logo lama */
+	padding:0 4vw;
+}
+#logo-row img{
+	height:12vw;		/* proporsional teks 10vw × line-height 1.2 */
+	width:auto;
+	max-width:25vw;
+	object-fit:contain;	/* aman untuk logo landscape maupun persegi */
+	flex:0 0 auto;
+}
+#logo{
+	text-align:center;
+	font-family:var(--font-logo);
+	font-size:10vw;
+	line-height:1.2;
+	color:var(--color-white);
+	text-shadow: 0 0.15vw 0.5vw rgba(0,0,0,0.5);
+	padding:0.5vw 0 0;
+	flex:0 1 auto;		/* nama bisa menyusut bila logo lebar */
+	min-width:0;
+}
+
+/* ============== Running text: CSS animation replacing <marquee> ============== */
+#running-text .rt-track{
+	display:inline-block;
+	white-space:nowrap;
+	will-change:transform;
+	animation: rt-scroll linear infinite;
+	animation-duration: var(--dur-rt);
+}
+#running-text .rt-content{
+	display:inline-block;
+	white-space:nowrap;
+}
+@keyframes rt-scroll{
+	from{ transform: translateX(0); }
+	to  { transform: translateX(-50%); }
+}
+
+/* Running-text separator (vanilla, replaces Font Awesome fa-square-o) */
+#running-text .item .rt-sep{
+	display:inline-block;
+	width:0.6vw;
+	height:0.6vw;
+	background:var(--color-gold);
+	margin:0 10px 0.25vw 20px;
+}
+
+
+/* =================== 12. Icon Vanilla =================== */
+/* Clock icon on the full-screen clock (vanilla, replaces fa-clock-o) */
+.fs-clock-icon{
+	display:inline-block;
+	width:0.75em;
+	height:0.75em;
+	border:0.06em solid currentColor;
+	border-radius:50%;
+	position:relative;
+	margin-right:0.5em;
+}
+.fs-clock-icon:before{
+	content:"";
+	position:absolute;
+	left:50%;
+	top:50%;
+	width:0.05em;
+	height:0.28em;
+	background:currentColor;
+	transform-origin:bottom center;
+	transform:translate(-50%,-100%) rotate(45deg);
+}
+
+
+/* =================== 13. Full-Screen Clock =================== */
+#full-screen-clock{
+	font-variant-numeric: tabular-nums;
+	position: fixed;
+	bottom:0;
+	left:0;
+	right:0;
+	font-size:4vw;
+	color:var(--color-white);
+	opacity: 0.75;	/* readable from a distance without being dominant */
+	padding:1vw 5vw;
+	background:rgba(0,0,0,0.3);
+	text-align:right;
+	z-index: var(--z-fs-clock);
+}
+
+
+/* =================== 14. Media Queries =================== */
+/* Dual UI: mobile portrait (width ≤768px)
+   Desktop/TV & landscape tetap layout 2 kolom. */
+@media (max-width: 768px) and (orientation: portrait) {
+	/* Leave safe space above the running text (including the iPhone safe area) */
+	#main{ bottom: calc(13vw + env(safe-area-inset-bottom, 0px)); }
+
+	/* ===== Mosque name ===== */
+	/* Selector #main > #logo-row (bukan #logo) agar specificity seimbang dengan
+	   margin-top:2vw base; mobile tetap pakai margin-top:auto sehingga baris logo
+	   duduk seimbang (perilaku asli), tak menempel tepi atas. */
+	#main > #logo-row{
+		font-size: 9vw;
+		line-height: 1.35;
+		padding: 0 6vw;
+		/* Leftover space split in 3 (above logo, between clock & schedule, below):
+		   margin-top:auto + margin-bottom ini + margin-bottom #columns. Saat
+		   konten melebihi layar semua margin auto jadi 0 sehingga atas tak terpotong. */
+		margin-top: auto;
+		margin-bottom: auto;
+	}
+	#main > #logo-row img{ height: 11vw; }
+
+	/* ===== Columns: clock (hero) first, schedule below =====
+	   gap ~22vw menyamakan jeda antar-seksi dengan margin auto (±3 bagian),
+	   sehingga seluruh layar terisi seimbang dari atas sampai bawah. */
+	#columns{
+		flex-direction: column;
+		gap: 22vw;
+		padding: 4vw 6vw 0;
+	}
+	#columns > #clock{ order: -1; flex: none; width: 100%; }
+	#columns > #jadwal{ flex: none; width: 100%; }
+
+	/* ===== Big clock as the focal point ===== */
+	#jam{
+		font-size: 17vw;
+		margin: 0;
+		/* padding-right reserves room for seconds inside the block,
+		   sehingga jam tetap simetris di tengah */
+		padding-right: 5.2vw;
+	}
+	#jam div{
+		top: 0.4vw;
+		right: 0.4vw;
+		width: 4.2vw;
+		font-size: 4.2vw;
+	}
+
+	/* ===== Date + line ornament ===== */
+	#tgl{
+		font-size: 3.6vw;
+		letter-spacing: 0.05vw;
+		margin: 2.4vw auto 0;
+	}
+	/* The ornament hangs shorter than the #columns gap (8vw)
+	   sehingga tidak menabrak kartu jadwal di bawahnya */
+	#tgl:after{
+		height: 6.5vw;
+		width: 26vw;
+		bottom: -5.5vw;
+	}
+
+	/* ===== Prayer schedule: glass card with roomy rows ===== */
+	#jadwal{
+		background: rgba(8, 13, 21, 0.55);
+		border: 1px solid rgba(255, 255, 255, 0.14);
+		border-radius: 4vw;
+		padding: 1.2vw 2.5vw;
+		box-shadow: 0 0.8vw 4vw rgba(0, 0, 0, 0.35);
+		backdrop-filter: blur(10px);
+		-webkit-backdrop-filter: blur(10px);
+	}
+	#jadwal .row{
+		padding: 2.2vw 1.5vw;
+		border-radius: 2.6vw;
+	}
+	#jadwal .row + .row{ margin-top: 1.2vw; }
+	#jadwal .jadwal-nama,
+	#jadwal .jadwal-waktu{
+		font-size: 5.2vw;
+		line-height: 1.25;
+		padding-top: 0;
+	}
+	#jadwal .jadwal-nama{ padding-left: 2.5vw; }
+	#jadwal .jadwal-waktu{ padding-right: 2.5vw; }
+	/* The "+" icon (tomorrow's schedule) stays readable on small screens */
+	#jadwal .jadwal-waktu span{
+		font-size: 2.4vw;
+		top: 1vw;
+		right: 0.6vw;
+	}
+	/* Active row: bold white pill with a soft shadow */
+	#jadwal .active{
+		background: var(--color-white);
+		border-radius: 2.6vw;
+		padding: 1.6vw 1.5vw;
+		margin: 0.5vw 0;
+		box-shadow: 0 0.4vw 2vw rgba(0, 0, 0, 0.3);
+	}
+	#jadwal .active .jadwal-nama,
+	#jadwal .active .jadwal-waktu{
+		font-size: 5.8vw;
+		padding-top: 0;
+	}
+
+	/* ===== Running text: taller & readable ===== */
+	#running-text{
+		height: 9vw;
+		bottom: calc(2vw + env(safe-area-inset-bottom, 0px));
+		border-radius: 2.6vw;
+	}
+	#running-text .item{
+		font-size: 3.8vw;
+		display: flex;
+		align-items: center;
+	}
+	/* The separator box is too small at the desktop size (0.6vw) */
+	#running-text .item .rt-sep{
+		width: 1.4vw;
+		height: 1.4vw;
+		margin: 0 12px 0 20px;
+	}
+}
+
+/* Connection status indicator — small dot in the bottom-right corner, unobtrusive.
+   STB tanpa RTC: hijau = jam tersinkron via internet, merah = offline
+   (display memakai offset waktu tersimpan + jadwal cadangan lokal). */
+#net-status {
+	position: fixed;
+	right: 10px;
+	bottom: 10px;
+	width: 10px;
+	height: 10px;
+	border-radius: 50%;
+	background: #2ecc71;
+	opacity: 0.7;
+	z-index: 9999;
+	pointer-events: none;
+}
+#net-status.offline {
+	background: #e74c3c;
+	opacity: 0.9;
+}
+
+/* Connection/clock warning banner — bold but does not cover the main content.
+   Ditempatkan di atas running text (bawah layar), berkedip agar terlihat
+   oleh jamaah/operator dari kejauhan. */
+@keyframes net-banner-blink {
+	0%, 100% { opacity: 1; }
+	50% { opacity: 0.35; }
+}
+#net-banner-anchor{ text-align:center; }
+#net-banner {
+	display: none;
+	margin: 6.5vw auto 0;    /* clear the date's decorative line (drops ~5.8vw) */
+	padding: 0.7vw 2vw;
+	clear: both;
+	border-radius: 0.5vw;
+	font-family: 'Inter', sans-serif;
+	font-size: 2.2vw;        /* large: readable from a distance */
+	font-weight: 700;
+	letter-spacing: 0.03em;
+	animation: net-banner-blink 1.4s ease-in-out infinite;
+	box-shadow: 0 2px 14px rgba(0,0,0,0.5);
+}
+/* The big clock turns RED when offline — the clearest warning on screen */
+#jam.clock-offline{ color: #ff4d4d; }
+#jam.clock-offline div{ color: #ff8080; }  /* seconds turn red too */
+
+#net-banner.warn-offline {
+	background: #c0392b;
+	color: #fff;
+}
+#net-banner.warn-clock {
+	background: #e67e22;
+	color: #fff;
+	animation-duration: 2.2s; /* calmer than offline: a warning, not an emergency */
+}
+#net-banner.warn-audio {
+	background: #7d3c98;
+	color: #fff;
+	animation-duration: 3s; /* gentle: informational only */
+}
+@media (max-width: 768px) {
+	#net-banner { font-size: 22px; padding: 10px 20px; }
+}

@@ -1,0 +1,313 @@
+#!/usr/bin/env bash
+# =============================================================================
+# install.sh — Instalasi Jam Masjid Santrimu untuk Armbian Desktop
+#
+# Repo : https://github.com/sdldev/jammasjid
+# Target: Armbian (Debian/Ubuntu based) desktop, kiosk TV/monitor masjid
+#
+# Pemakaian:
+#   sudo bash install.sh
+#   sudo bash install.sh --user orang --dir /opt/jam-masjid
+#   sudo bash install.sh --skip-cleanup        # lewati pembersihan apt
+#   sudo bash install.sh --branch main
+#
+# Yang dilakukan:
+#   1. Cek root, OS, arsitektur, koneksi internet
+#   2. apt update + upgrade + pembersihan konservatif
+#   3. Install dependensi (curl, git, ca-certificates, chromium, utilitas X)
+#   4. Install Bun (kalau belum ada; user root)
+#   5. Clone/pull repo ke /opt/jam-masjid
+#   6. bun install --frozen-lockfile --production
+#   7. Buat .env (AUTH_SECRET acak, ADMIN_PASS default admin1234)
+#   8. Pasang systemd: masjid-display + masjid-kiosk (user desktop)
+#   9. Aktifkan service, verifikasi HTTP
+#
+# Idempoten: aman dijalankan ulang (tidak menimpa .env yang sudah ada).
+# =============================================================================
+set -Eeuo pipefail
+
+# ---------- konfigurasi default (bisa di-override via argumen) ---------------
+REPO_URL="${REPO_URL:-https://github.com/sdldev/jammasjid.git}"
+BRANCH="${BRANCH:-main}"
+APP_DIR="${APP_DIR:-/opt/jam-masjid}"
+APP_USER="${APP_USER:-}"          # user yang menjalankan kiosk (desktop login)
+KIOSK_DISPLAY="${KIOSK_DISPLAY:-:0}"
+SKIP_CLEANUP=0
+SKIP_UPGRADE=0
+PORT="${PORT:-11111}"
+
+# ---------- utilitas ---------------------------------------------------------
+C_G='\033[0;32m'; C_Y='\033[1;33m'; C_R='\033[0;31m'; C_B='\033[0;36m'; C_N='\033[0m'
+log()  { printf "${C_B}[install]${C_N} %s\n" "$*"; }
+ok()   { printf "${C_G}[ ok ]${C_N} %s\n" "$*"; }
+warn() { printf "${C_Y}[warn]${C_N} %s\n" "$*"; }
+die()  { printf "${C_R}[fail]${C_N} %s\n" "$*" >&2; exit 1; }
+
+trap 'die "Gagal pada baris $LINENO. Instalasi dihentikan."' ERR
+
+usage() {
+  # Cetak blok komentar header (baris 2 s/d baris sebelum 'set -Eeuo pipefail')
+  awk 'NR>1 && /^# =+$/ && NR>3 {exit} NR>1 {sub(/^# ?/,""); print}' "$0" | sed -n '1,40p'
+  exit 0
+}
+
+# ---------- parse argumen ----------------------------------------------------
+while [[ $# -gt 0 ]]; do
+  case "$1" in
+    --user)        APP_USER="${2:?--user butuh nilai}"; shift 2 ;;
+    --dir)         APP_DIR="${2:?--dir butuh nilai}"; shift 2 ;;
+    --branch)      BRANCH="${2:?--branch butuh nilai}"; shift 2 ;;
+    --repo)        REPO_URL="${2:?--repo butuh nilai}"; shift 2 ;;
+    --display)     KIOSK_DISPLAY="${2:?--display butuh nilai}"; shift 2 ;;
+    --port)        PORT="${2:?--port butuh nilai}"; shift 2 ;;
+    --skip-cleanup) SKIP_CLEANUP=1; shift ;;
+    --skip-upgrade) SKIP_UPGRADE=1; shift ;;
+    -h|--help)     usage ;;
+    *) die "Argumen tidak dikenal: $1 (pakai --help)" ;;
+  esac
+done
+
+# ---------- 1. pra-cek -------------------------------------------------------
+[[ $EUID -eq 0 ]] || die "Jalankan sebagai root: sudo bash install.sh"
+[[ -f /etc/debian_version ]] || die "Skrip ini untuk Debian/Ubuntu (Armbian). OS lain belum didukung."
+arch="$(uname -m)"
+case "$arch" in
+  aarch64|arm64|x86_64|amd64) ok "Arsitektur: $arch" ;;
+  *) die "Arsitektur $arch belum didukung." ;;
+esac
+command -v apt-get >/dev/null || die "apt-get tidak ditemukan."
+
+if ! getent hosts github.com >/dev/null 2>&1; then
+  die "Tidak ada koneksi internet (DNS github.com gagal). Sambungkan jaringan lalu ulangi."
+fi
+ok "Koneksi internet tersedia."
+
+# Tentukan user kiosk: argumen > user pemilik sesi desktop > SUDO_USER > root
+if [[ -z "$APP_USER" ]]; then
+  APP_USER="$(loginctl list-sessions --no-legend 2>/dev/null | awk '{print $3}' | grep -v '^root$' | head -1 || true)"
+fi
+if [[ -z "$APP_USER" ]]; then APP_USER="${SUDO_USER:-root}"; fi
+id "$APP_USER" >/dev/null 2>&1 || die "User '$APP_USER' tidak ada."
+APP_HOME="$(getent passwd "$APP_USER" | cut -d: -f6)"
+ok "User kiosk: $APP_USER (home: $APP_HOME)"
+
+# ---------- 2. apt update/upgrade + pembersihan konservatif ------------------
+export DEBIAN_FRONTEND=noninteractive
+log "apt update..."
+apt-get update -qq
+
+if [[ $SKIP_UPGRADE -eq 0 ]]; then
+  log "apt upgrade (bisa beberapa menit)..."
+  apt-get -y -o Dpkg::Options::=--force-confdef -o Dpkg::Options::=--force-confold upgrade
+  ok "Sistem diperbarui."
+else
+  warn "Upgrade sistem dilewati (--skip-upgrade)."
+fi
+
+if [[ $SKIP_CLEANUP -eq 0 ]]; then
+  log "Membersihkan paket tidak terpakai (konservatif)..."
+  apt-get -y autoremove --purge
+  apt-get -y clean
+  apt-get -y autoclean
+
+  # Paket desktop berat yang tidak dibutuhkan display. Hanya dihapus bila ada.
+  PAKET_BERAT=(
+    libreoffice-core libreoffice-common libreoffice-writer libreoffice-calc
+    libreoffice-impress thunderbird hexchat transmission-gtk
+    gnome-mines gnome-sudoku gnome-mahjongg aisleriot
+  )
+  terpasang=()
+  for p in "${PAKET_BERAT[@]}"; do
+    dpkg -s "$p" >/dev/null 2>&1 && terpasang+=("$p")
+  done
+  if [[ ${#terpasang[@]} -gt 0 ]]; then
+    log "Menghapus paket berat: ${terpasang[*]}"
+    apt-get -y purge "${terpasang[@]}" || warn "Sebagian paket gagal dihapus (lanjut)."
+    apt-get -y autoremove --purge
+  else
+    ok "Tidak ada paket berat yang terpasang."
+  fi
+  ok "Pembersihan selesai."
+else
+  warn "Pembersihan apt dilewati (--skip-cleanup)."
+fi
+
+# ---------- 3. dependensi ----------------------------------------------------
+log "Memasang dependensi sistem..."
+APT_PKGS=(curl ca-certificates git unzip jq rsync x11-utils)
+# Chromium: nama paket berbeda antara Debian (chromium) dan Ubuntu/Armbian (snap)
+if ! command -v chromium >/dev/null && ! command -v chromium-browser >/dev/null; then
+  if apt-cache policy chromium 2>/dev/null | grep -q 'Candidate: [0-9]'; then
+    APT_PKGS+=(chromium)
+  elif command -v snap >/dev/null; then
+    log "Chromium tidak ada di apt; memasang via snap..."
+    snap install chromium || warn "Instalasi snap chromium gagal."
+  else
+    warn "Chromium tidak ditemukan di apt maupun snap. Pasang manual setelah instalasi."
+  fi
+fi
+apt-get -y install "${APT_PKGS[@]}"
+ok "Dependensi sistem terpasang."
+
+# ---------- 4. Bun -----------------------------------------------------------
+BUN_BIN=""
+for cand in /root/.bun/bin/bun "$APP_HOME/.bun/bin/bun" "$(command -v bun 2>/dev/null || true)"; do
+  [[ -n "$cand" && -x "$cand" ]] && { BUN_BIN="$cand"; break; }
+done
+if [[ -z "$BUN_BIN" ]]; then
+  log "Memasang Bun (root)..."
+  curl -fsSL https://bun.sh/install | bash
+  BUN_BIN="/root/.bun/bin/bun"
+fi
+[[ -x "$BUN_BIN" ]] || die "Bun gagal dipasang."
+ok "Bun: $BUN_BIN ($("$BUN_BIN" --version))"
+
+# ---------- 5. clone / update repo ------------------------------------------
+if [[ -d "$APP_DIR/.git" ]]; then
+  log "Repo sudah ada → update ke branch $BRANCH..."
+  git -C "$APP_DIR" fetch --all --prune
+  git -C "$APP_DIR" checkout "$BRANCH"
+  git -C "$APP_DIR" pull --ff-only
+  ok "Repo diperbarui."
+else
+  log "Clone $REPO_URL → $APP_DIR (branch $BRANCH)..."
+  mkdir -p "$(dirname "$APP_DIR")"
+  git clone --branch "$BRANCH" --depth 1 "$REPO_URL" "$APP_DIR"
+  ok "Repo di-clone."
+fi
+cd "$APP_DIR"
+
+# ---------- 6. dependensi aplikasi ------------------------------------------
+log "bun install (production, lockfile terkunci)..."
+# Dev deps (vitest, wrangler) tidak dibutuhkan di runtime display
+"$BUN_BIN" install --frozen-lockfile --production
+ok "Dependensi aplikasi terpasang."
+
+# ---------- 7. .env ----------------------------------------------------------
+ENV_FILE="$APP_DIR/.env"
+if [[ -f "$ENV_FILE" ]]; then
+  ok ".env sudah ada — tidak ditimpa."
+else
+  log "Membuat .env baru..."
+  SECRET="$(openssl rand -hex 32 2>/dev/null || head -c 32 /dev/urandom | xxd -p -c 64)"
+  cat > "$ENV_FILE" <<EOF
+# Dibuat otomatis oleh install.sh — JANGAN di-commit.
+AUTH_SECRET=$SECRET
+# Password admin awal. Login DITOLAK selama masih admin1234:
+# setelah instalasi buka admin → "Ganti password", atau ubah nilai ini + restart.
+ADMIN_PASS=admin1234
+PORT=$PORT
+EOF
+  chmod 600 "$ENV_FILE"
+  ok ".env dibuat (AUTH_SECRET acak)."
+fi
+chown -R "$APP_USER":"$APP_USER" "$APP_DIR" 2>/dev/null || true
+
+# ---------- 8. systemd unit --------------------------------------------------
+log "Memasang systemd unit..."
+
+cat > /etc/systemd/system/masjid-display.service <<EOF
+[Unit]
+Description=Jam Masjid Santrimu - server lokal Bun
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=$APP_DIR
+ExecStart=$BUN_BIN src/server.mjs
+Restart=on-failure
+RestartSec=5
+User=$APP_USER
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Path chromium terdeteksi
+CHROME_BIN="$(command -v chromium || command -v chromium-browser || echo /usr/bin/chromium)"
+cat > /etc/systemd/system/masjid-kiosk.service <<EOF
+[Unit]
+Description=Jam Masjid Santrimu - Chromium kiosk
+After=masjid-display.service graphical.target
+Wants=masjid-display.service
+
+[Service]
+Type=simple
+User=$APP_USER
+Environment=DISPLAY=$KIOSK_DISPLAY
+Environment=XAUTHORITY=$APP_HOME/.Xauthority
+ExecStartPre=/bin/sh -c 'for i in \$(seq 1 40); do curl -sf http://localhost:$PORT/ >/dev/null && exit 0; sleep 1; done; exit 1'
+ExecStart=$CHROME_BIN \\
+  --kiosk \\
+  --disable-pinch \\
+  --autoplay-policy=no-user-gesture-required \\
+  --disable-features=Translate,TranslateUI \\
+  --lang=id-ID \\
+  --accept-lang=id-ID,id \\
+  --disable-component-update \\
+  --disable-notifications \\
+  --no-first-run \\
+  --no-default-browser-check \\
+  --user-data-dir=$APP_HOME/.config/jammasjid-kiosk \\
+  http://localhost:$PORT/
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=graphical.target
+EOF
+
+systemctl daemon-reload
+systemctl enable masjid-display.service
+systemctl enable masjid-kiosk.service
+ok "Service terpasang & diaktifkan."
+
+# ---------- 9. jalankan & verifikasi ----------------------------------------
+log "Menjalankan server..."
+systemctl restart masjid-display.service
+
+HTTP_OK=0
+for i in $(seq 1 30); do
+  if curl -sf "http://localhost:$PORT/" >/dev/null 2>&1; then HTTP_OK=1; break; fi
+  sleep 1
+done
+[[ $HTTP_OK -eq 1 ]] || {
+  journalctl -u masjid-display.service -n 30 --no-pager || true
+  die "Server tidak merespons di port $PORT. Lihat log di atas."
+}
+ok "Server merespons di http://localhost:$PORT/"
+
+# Kiosk hanya bisa jalan bila sesi grafis aktif
+if [[ -n "${DISPLAY:-}" ]] || pgrep -x Xorg >/dev/null 2>&1 || pgrep -x Xwayland >/dev/null 2>&1; then
+  systemctl restart masjid-kiosk.service || warn "Kiosk gagal start; periksa: journalctl -u masjid-kiosk -f"
+else
+  warn "Sesi grafis belum aktif. Kiosk akan jalan otomatis saat login desktop."
+fi
+
+# ---------- ringkasan --------------------------------------------------------
+cat <<EOF
+
+$(printf "${C_G}Instalasi selesai.${C_N}")
+
+  Display : http://localhost:$PORT/
+  Admin   : http://localhost:$PORT/admin/
+  Login   : user "admin", password dari ADMIN_PASS di $ENV_FILE
+  Direktori: $APP_DIR
+  User     : $APP_USER
+
+Langkah wajib berikutnya:
+  1. Buka admin → "Ganti password" (password default admin1234 DITOLAK).
+  2. Cek layar display sudah tampil (kiosk). Kalau belum:
+       sudo systemctl start masjid-kiosk
+       journalctl -u masjid-kiosk -f
+  3. Cek status server:
+       systemctl status masjid-display
+       journalctl -u masjid-display -f
+
+Perintah berguna:
+  sudo bash $APP_DIR/scripts/update.sh          # update kode & restart
+  sudo systemctl restart masjid-display         # restart server
+  sudo systemctl restart masjid-kiosk           # restart browser kiosk
+EOF

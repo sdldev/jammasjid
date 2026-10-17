@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<!-- saved from url=(0025)http://localhost/display/ -->
+<html lang="id">
+	<head>
+	<meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+	
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- Keep out of search engine indexes -->
+    <meta name="robots" content="noindex, nofollow">
+    <title>Jam Masjid Santrimu</title>
+    <link rel="icon" type="image/png" href="/img/bg-pattern-01.webp">
+    <link rel="manifest" href="/manifest.json">
+    <!-- ?v= cache-busting: asset di-cache browser 30 hari; naikkan versi saat deploy perubahan CSS/JS -->
+    <link href="/masjid/style.css?v=3" rel="stylesheet">
+	<style>
+		
+	</style>
+</head>
+
+<body>
+	
+
+    <!-- Shown until the first data render completes (hidden by showJadwal) -->
+    <div id="preloader">
+      <div id="status"></div>
+    </div>
+	<div id="full-screen-clock" style="display:none"></div>
+	<div id="count-down" class="full-screen" style="display:none">
+		<div class="counter">
+			<h1>COUNTER</h1>
+			<div class="ii"><div class="flip-row"><span class="flip-digit" data-loc="min-tens">0</span><span class="flip-digit" data-loc="min-units">0</span></div><span class="flip-label">MENIT</span></div>
+			<div class="flip-colon">:</div>
+			<div class="ss"><div class="flip-row"><span class="flip-digit" data-loc="sec-tens">0</span><span class="flip-digit" data-loc="sec-units">0</span></div><span class="flip-label">DETIK</span></div>
+		</div>
+	</div>
+	<div id="display-adzan" class="full-screen" style="display:none"><div></div></div>
+	
+	
+	<div id="main">
+		<div id="logo-row">
+			<img id="logo-left" alt="" style="display:none">
+			<div id="logo">__MASJID_NAME__</div>
+			<img id="logo-right" alt="" style="display:none">
+		</div>
+		<div id="columns">
+			<div id="jadwal">
+				<!-- Placeholder time values: replaced with real times by showJadwal().
+				     Class "skel" memberi animasi loading sampai data terisi. -->
+				<div class="row active">
+					<div class="jadwal-nama">Subuh</div>
+					<div class="jadwal-waktu skel">&nbsp;<span>+</span></div>
+				</div>
+				<div class="row">
+					<div class="jadwal-nama">Shuruq</div>
+					<div class="jadwal-waktu skel">&nbsp;<span>+</span></div>
+				</div>
+				<div class="row">
+					<div class="jadwal-nama">Dzuhur</div>
+					<div class="jadwal-waktu skel">&nbsp;<span>+</span></div>
+				</div>
+				<div class="row">
+					<div class="jadwal-nama">Ashar</div>
+					<div class="jadwal-waktu skel">&nbsp;<span>+</span></div>
+				</div>
+				<div class="row">
+					<div class="jadwal-nama">Maghrib</div>
+					<div class="jadwal-waktu skel">&nbsp;<span>+</span></div>
+				</div>
+				<div class="row">
+					<div class="jadwal-nama">Isya'</div>
+					<div class="jadwal-waktu skel">&nbsp;<span>+</span></div>
+				</div>
+			</div>
+			<div id="clock">
+				<div id="jam" class="skel">&nbsp;</div>
+				<div id="tgl" class="skel">&nbsp;</div>
+				<!-- Connection/clock warning right below the big clock + date:
+				     the screen's focal point, clearly visible to the congregation. -->
+				<div id="net-banner-anchor"></div>
+			</div>
+		</div>
+	</div>
+
+	<div id="right-counter" style="display:none">
+		<div class="counter">
+			<h1>COUNTER</h1>
+			<div class="ii"><div class="flip-row"><span class="flip-digit" data-loc="min-tens">0</span><span class="flip-digit" data-loc="min-units">0</span></div><span class="flip-label">MENIT</span></div>
+			<div class="flip-colon">:</div>
+			<div class="ss"><div class="flip-row"><span class="flip-digit" data-loc="sec-tens">0</span><span class="flip-digit" data-loc="sec-units">0</span></div><span class="flip-label">DETIK</span></div>
+		</div>
+	</div>
+	<div id="running-text">
+		<div class="item">
+			<!-- Content built by JS from db.running_text; CSS animation replaces <marquee> -->
+		</div>
+	</div>
+    <script src="./masjid/jquery-3.4.1.min.js?v=1"></script>
+    <script src="./masjid/moment.min.js?v=1"></script>
+    <script src="./masjid/PrayTimes.js?v=1"></script>
+    <script>
+				
+		
+		
+		// PrayTimes initialize
+		var format 			= '24h';
+		var lat 		= __LAT__;
+var lng 		= __LNG__;
+var timeZone 	= __TIMEZONE__;
+var dst 		= __DST__;
+var prayTimesAdjust =	$.parseJSON('__PRAY_TIMES_ADJUST__');
+prayTimes.adjust(prayTimesAdjust);
+var prayTimesTune =	$.parseJSON('__PRAY_TIMES_TUNE__');
+prayTimes.tune(prayTimesTune);
+		
+		
+		
+		// From this line down: candidate for extraction into a separate file.
+		
+		var dbAwal	= $.parseJSON(__DB_JSON__);
+		var app	={
+			db	: dbAwal,
+			cekDb	: false,
+			lastCheckTime	: null, // watchdog: timestamp sukses terakhir checkDbChange (bukti net hidup)
+			bootTime	: null, // watchdog: diisi initialize(); waktu halaman pertama kali load
+			// Real clock offset (ms) from the Kemenag server — for RTC-less STBs.
+			// The display shifts every clock read by this amount; 0 = clock accurate.
+			timeOffsetMs	: Number(dbAwal.time_offset_ms) || 0,
+			tglHariIni		: '',
+			tglBesok		: '',
+			jadwalHariIni	: {},
+			jadwalBesok		: {},
+				timer			: false,
+				// waitAdzanTimer	: false,	// pre-adhan countdown display
+				adzanTimer		: false,	// Display adzan
+				countDownTimer	: false,	// Display countdown iqomah
+				countDownTarget	: null,		// key target countdown aktif; ganti target → reset lantai monotonik
+				countDownLast	: null,		// nilai distance terakhir dirender (lantai monotonik anti detik-lompat)
+				countDownHold	: 0,			// berapa tick berturut-turut nilai ditahan (anti mundur jam)
+				checkDbInFlight	: false,		// cegah request changeDbCheck menumpuk
+				beepPlaying		: false,		// cegah beep saling memotong
+				// Cache string render terakhir agar DOM tidak direbuild tiap detik
+				_lastJadwalHtml	: null,
+				_lastTgl		: null,
+				_lastJam		: null,
+				_lastPreloaderVisible	: null,
+				_lastFsClockVisible		: null,
+				// nextPrayTimer	: false,	// countdown to the next prayer
+			fajr	: '',
+			sunrise	: '',
+			dhuhr	: '',			asr		: '',
+			maghrib	: '',
+				isha	: '',
+				audio	: new Audio('img/beep-beep.mp3'),
+				// Play beep-beep.mp3 once from the start. .catch prevents a throw
+				// when the browser blocks autoplay (user interaction required).
+				// beepPlaying prevents overlapping plays; a NotAllowedError surfaces a hint.
+				playBeepOnce	: function(){
+					if(app.beepPlaying) return;
+					app.beepPlaying	= true;
+					app.audio.currentTime	= 0;
+					app.audio.play().then( () => {
+						// autoplay already allowed
+					}).catch( (err) => {
+						if(err && err.name === 'NotAllowedError'){
+							// Show a one-time hint so the operator knows sound is blocked.
+							app.showAudioBlockedHint();
+						}
+					}).finally(function(){
+						app.beepPlaying	= false;
+					});
+				},
+				// Small persistent hint when the browser blocks audio autoplay.
+				showAudioBlockedHint	: function(){
+					$('#net-banner')
+						.attr('class', 'warn-audio')
+						.text('Suara diblokir browser; aktifkan permission sound atau sentuh layar sekali')
+						.show();
+				},
+			// Deterministic Rupiah formatting without toLocaleString (2200000 -> "Rp 2.200.000")
+			formatRupiah	: function(num){
+				var n		= Math.round(Number(num) || 0);
+				var sign	= (n < 0) ? '-' : '';
+				var digits	= String(Math.abs(n)).replace(/\B(?=(\d{3})+(?!\d))/g, '.');
+				return sign + 'Rp ' + digits;
+			},
+			// Mosque treasury info (2 segments) shown FIRST in the running text.
+			// Separated by the yellow square icon like other texts; segment 2 only
+			// appears when an account number is set. Returns '' when inactive/empty.
+			kasRunningText	: function(){
+				var kas	= app.db.kas;
+				if(!kas) return '';
+				var aktif	= kas.active === true || kas.active === '1' || kas.active === 1;
+				if(!aktif) return '';
+				// Nothing filled in yet (all zeros & empty account) → don't show
+				// a row of "Rp 0". Any single value makes it appear.
+				var nolSemua	= !(Number(kas.kas_bulan_lalu)||0) && !(Number(kas.pendapatan)||0) && !(Number(kas.pengeluaran)||0);
+				if(nolSemua && !String(kas.rekening).trim()) return '';
+				var sep	= '<span class="rt-sep"></span> ';
+				var esc	= function(t){ return $('<div>').text(t).html(); };
+				var saldo	= (Number(kas.kas_bulan_lalu)||0) + (Number(kas.pendapatan)||0) - (Number(kas.pengeluaran)||0);
+				var html	= sep + esc('KAS MASJID') + sep +
+					esc('Saldo bulan lalu: ') + app.formatRupiah(kas.kas_bulan_lalu) + sep +
+					esc('Pendapatan: ') + app.formatRupiah(kas.pendapatan) + sep +
+					esc('Pengeluaran: ') + app.formatRupiah(kas.pengeluaran) + sep +
+					esc('Saldo: ') + app.formatRupiah(saldo);
+				if(String(kas.rekening).trim()){
+					// Double separator marks the second segment (account info)
+					html	+= sep + sep + esc('Infaq & sedekah dapat disalurkan melalui rekening ' +
+						String(kas.rekening).trim() + '. Terima kasih.');
+				}
+				return html + ' ';
+			},
+			
+			// Offset-aware "now" for RTC-less STBs. When the offset is non-zero,
+			// shift the system clock. Used by every clock-dependent path
+			// (cekPerDetik, showJadwal, countdown, watchdog) instead of bare moment().
+			now	: function(){
+				return app.timeOffsetMs ? moment(Date.now() + app.timeOffsetMs) : moment();
+			},
+				// Logo opsional kiri/kanan judul: tampilkan img sesuai db.logo.left/right.
+				// Dipanggil sekali saat boot — perubahan logo selanjutnya datang lewat
+				// SSE db-changed → reload halaman, jadi tidak perlu dicek per-detik.
+				showLogo	: function(){
+					var logo	= app.db.logo || {};
+					$.each({ left: '#logo-left', right: '#logo-right' }, function(side, sel){
+						var url	= String(logo[side] || '').trim();
+						if(url){
+							$(sel).attr('src', url).show();
+						} else {
+							// kosongkan src agar browser tidak me-request URL lama/404
+							$(sel).removeAttr('src').hide();
+						}
+					});
+				},
+				initialize	: function(){
+					// Create offline indicators up front so updateNetBanner() can work at boot.
+					$('<div id="net-status">').appendTo('body');
+					$('<div id="net-banner">').appendTo('#net-banner-anchor');
+
+					app.showLogo();
+					app.timer	= setInterval(function(){app.cekPerDetik()},1000);
+					app.connectRealtime();
+					app.getDbHash();
+					app.showRunningText();
+					// Evaluate the stored offset immediately → the "clock wrong" banner
+					// can appear even while online (RTC-less STB with large drift).
+					app.updateNetBanner(true);
+					// Memory-reset watchdog: check every 60s, reload ONLY when the net is proven alive
+					app.bootTime = app.now();
+					setInterval(app.watchDog, 60000);
+					// Browsers block audio autoplay until the first user interaction.
+					// The first touch/click unlocks the audio element (play then pause back
+					// to the start) so beeps can fire automatically later.
+					$(document).one('pointerdown keydown', function(){
+						app.audio.play().then(function(){
+							app.audio.pause();
+							app.audio.currentTime	= 0;
+						}).catch(function(){});
+					});
+					// Safety net: if showJadwal() fails to fill data (error/unexpected),
+					// the preloader still hides after 5 seconds so the screen never stays blank.
+					setTimeout(function(){ $('#preloader').fadeOut(800); }, 5000);
+				},
+				cekPerDetik	: function(){
+					if(!app.tglHariIni || app.now().format('YYYY-MM-DD') != moment(app.tglHariIni).format('YYYY-MM-DD')){
+						// Assign markers only AFTER the schedule computes successfully;
+						// otherwise a bad row poisons the display for the whole day.
+						let tglBaru	= app.now();
+						let tglBesokBaru	= app.now().add(1,'days');
+						let jadwalBaru	= app.getJadwal(moment(tglBaru).toDate());
+						let jadwalBesokBaru	= app.getJadwal(moment(tglBesokBaru).toDate());
+						app.tglHariIni	= tglBaru;
+						app.tglBesok	= tglBesokBaru;
+						app.jadwalHariIni	= jadwalBaru;
+						app.jadwalBesok	= jadwalBesokBaru;
+						app.fajr	= moment(jadwalBaru.fajr,'HH:mm');
+						app.sunrise	= moment(jadwalBaru.sunrise,'HH:mm');
+						app.dhuhr	= moment(jadwalBaru.dhuhr,'HH:mm');
+						app.asr		= moment(jadwalBaru.asr,'HH:mm');
+						app.maghrib	= moment(jadwalBaru.maghrib,'HH:mm');
+						app.isha	= moment(jadwalBaru.isha,'HH:mm');
+					}
+					app.showJadwal();
+					app.displaySchedule();
+				},
+				connectRealtime	: function(){
+					// SSE: when an admin changes data, the display reloads automatically.
+					// EventSource reconnects on its own if the connection drops.
+					var evs = new EventSource('/api/events');
+					var reloadTimer	= null;
+					evs.addEventListener('db-changed', function(){
+						// Debounce: admin could save several forms in quick succession.
+						clearTimeout(reloadTimer);
+						reloadTimer	= setTimeout(function(){ location.reload(); }, 3000);
+					});
+					// Manual JSON edits in the Cloudflare dashboard (KV) do not fire SSE,
+					// so the hash is checked on (re)connect and every 5 minutes as a safety net.
+					evs.addEventListener('open', function(){
+						if(app.cekDb) app.checkDbChange();
+					});
+					setInterval(app.checkDbChange, 300000);
+				},
+				getDbHash	: function(){
+					// Tanpa timeout/guard, satu request hang membuat deteksi offline lumpuh.
+					if(app.checkDbInFlight) return;
+					app.checkDbInFlight	= true;
+					$.ajax({
+						url		: '/api/proses',
+						type	: 'POST',
+						dataType	: 'json',
+						timeout	: 15000,
+						data	: {id:'changeDbCheck'}
+					}).done(function(dt){
+						app.cekDb	= dt.data;
+						app.lastCheckTime	= app.now();
+						app.setNetStatus(true);
+					}).fail(function(){
+						app.setNetStatus(false);
+					}).always(function(){
+						app.checkDbInFlight	= false;
+					});
+				},
+				checkDbChange	: function(){
+					// Tanpa timeout/guard, satu request hang membuat deteksi offline & watchdog lumpuh.
+					if(app.checkDbInFlight) return;
+					app.checkDbInFlight	= true;
+					$.ajax({
+						url		: '/api/proses',
+						type	: 'POST',
+						dataType	: 'json',
+						timeout	: 15000,
+						data	: {id:'changeDbCheck'}
+					}).done(function(dt){
+						if(app.cekDb && app.cekDb !== dt.data) location.reload();
+						else app.cekDb = dt.data;
+						app.lastCheckTime = app.now(); // update: bukti internet hidup, reset watchdog timer
+						app.setNetStatus(true);
+					}).fail(function(){
+						app.setNetStatus(false); // server tak terjangkau → tandai offline
+					}).always(function(){
+						app.checkDbInFlight	= false;
+					});
+				},
+				setNetStatus	: function(online){
+					// Corner dot (subtle) + blinking text banner + big clock turns red
+					// when offline — the clearest signal for the congregation/operator.
+					$('#net-status')
+						.toggleClass('offline', !online)
+						.toggleClass('online', !!online)
+						.attr('title', online
+							? 'Online · jadwal & jam tersinkron'
+							: 'Offline · jam mengandalkan offset tersimpan, jadwal cadangan lokal');
+					$('#jam').toggleClass('clock-offline', !online);
+					app.updateNetBanner(online);
+				},
+				// Warning banner: offline, or wrong clock (large offset, RTC-less STB).
+				// Appears below the clock; disappears on its own once the condition clears.
+				updateNetBanner	: function(online){
+					var pesan = null, kelas = '';
+					var offsetJam = Math.abs(app.timeOffsetMs) / 3600000;
+					if(!online){
+						pesan = 'Tidak ada koneksi internet';
+						kelas = 'warn-offline';
+					} else if(offsetJam >= 1){
+						pesan = 'Jam perangkat salah, sudah dikoreksi otomatis';
+						kelas = 'warn-clock';
+					}
+					if(!pesan){
+						$('#net-banner').hide();
+					} else {
+						$('#net-banner')
+							.attr('class', kelas)
+							.text(pesan)
+							.show();
+					}
+				},
+			watchDog	: function(){
+				// Periodic memory reset: reload only in the 13:00-13:59 window AND only
+				// when the net is proven alive (checkDbChange succeeded < 2h ago). If the
+				// net is down, lastCheckTime goes stale → reload is deferred, screen stays up.
+				var WATCHDOG_HOUR_START	= 13, WATCHDOG_HOUR_END = 14; // jendela eksekusi: jam 13
+				var NET_FRESH_MINUTES	= 120;  // checkDbChange sukses dianggap bukti net hidup
+				var now	= app.now();
+				var hour	= now.hour() + now.minute() / 60;
+				if(hour < WATCHDOG_HOUR_START || hour >= WATCHDOG_HOUR_END) return;
+				if(!app.lastCheckTime) return; // belum pernah sukses cek DB sejak boot
+				var minutesSinceOk	= now.diff(app.lastCheckTime, 'minutes');
+				var hoursSinceBoot	= now.diff(app.bootTime, 'hours');
+				if(minutesSinceOk < NET_FRESH_MINUTES && hoursSinceBoot > 24){
+					location.reload();
+				}
+			},
+				showRunningText	: function(){
+					// Running text content comes from the database (db.running_text), not hardcoded.
+					// The CSS animation (.rt-track) replaces the deprecated <marquee> tag:
+					// content is duplicated and shifted -50% so the loop is seamless.
+					var texts = app.db.running_text || [];
+					var html = app.kasRunningText();	// Info kas tampil paling awal
+					$.each(texts, function(i, text){
+						// Each text is separated by the yellow square icon, as in the original UI
+						html += '<span class="rt-sep"></span> ' +
+							$('<div>').text(text).html() + ' ';
+					});
+					if(!html.trim()){
+						// Empty state: hide the bar instead of leaving a blank strip.
+						$('#running-text').hide();
+						return;
+					}
+					$('#running-text').show();
+					var $track = $('<div class="rt-track">')
+						.append('<span class="rt-content">' + html + '</span><span class="rt-content">' + html + '</span>');
+					$('#running-text .item').empty().append($track);
+					app.setRunningTextSpeed();
+					// Re-measure after the web font loads (text width may change)
+					if(document.fonts && document.fonts.ready){
+						document.fonts.ready.then(function(){ app.setRunningTextSpeed(); });
+					}
+				},
+				setRunningTextSpeed	: function(){
+					// Constant scroll speed (~80 px/s) regardless of text length
+					var contentWidth = $('#running-text .rt-content').first().outerWidth() || 0;
+					var duration = Math.max(contentWidth / 80, 15);
+					$('#running-text .rt-track').css('animation-duration', duration + 's');
+				},
+				getJadwal	: function(jadwalDate){
+					// Priority: the synced official Kemenag schedule (db.jadwal_resmi,
+					// keyed 'YYYY-MM-DD'). When the date is missing (long offline / sync
+					// never ran), fall back to the local PrayTimes calculation.
+					var key = moment(jadwalDate).format('YYYY-MM-DD');
+					var resmi = (app.db.jadwal_resmi || {})[key];
+					// Require all pipeline fields; a partial row (e.g. empty ashar) must fall back.
+					if(resmi && resmi.fajr && resmi.dhuhr && resmi.asr && resmi.maghrib && resmi.isha){
+						return {
+							fajr	: resmi.fajr,
+							sunrise	: resmi.sunrise || resmi.fajr,
+							dhuhr	: resmi.dhuhr,
+							asr		: resmi.asr,
+							maghrib	: resmi.maghrib,
+							isha	: resmi.isha
+						};
+					}
+					let times = prayTimes.getTimes(jadwalDate, [lat, lng], timeZone, dst, format);
+					return times;
+				},
+				showJadwal	: function(){
+					let jamSekarang	= app.now();
+					// +5 min before the active row switches (e.g. during dhuhr, asr becomes active 5 min after entry)
+					let jamDelay	= app.now().subtract(5,'minutes');
+					let jadwal	= '';
+					let hari	= app.db.dayName[jamSekarang.format("dddd")];	//pastikan moment js pake standart inggris (default) ==> jangan pindah locale
+					let bulan	= app.db.monthName[jamSekarang.format("MMMM")];
+
+					// Fill in real data, then hide skeleton & preloader (only on change)
+					let tglStr	= jamSekarang.format("["+hari+"], DD ["+bulan+"] YYYY");
+					let jamStr	= jamSekarang.format("HH:mm");
+					let secStr	= jamSekarang.format("ss");
+					if(app._lastTgl !== tglStr){
+						$('#tgl').html(tglStr);
+						app._lastTgl	= tglStr;
+					}
+					if(app._lastJam !== jamStr){
+						// NOTE: tanda [..] adalah escape format moment (lihat tglStr di atas),
+						// BUKAN sintaks HTML — jadi tag <div> ditulis langsung di sini.
+						$('#jam').html(jamStr + '<div>' + secStr + '</div>');
+						app._lastJam	= jamStr;
+					} else {
+						$('#jam div').text(secStr);
+					}
+					$('.skel').removeClass('skel');
+					if(app._lastPreloaderVisible !== false){
+						$('#preloader').fadeOut(800);
+						app._lastPreloaderVisible	= false;
+					}
+
+					// Corner clock shows on every overlay, including the pre-adhan countdown
+					// (#right-counter is not part of the .full-screen group)
+					let fsClockVisible	= $('.full-screen').is(":visible") || $('#right-counter').is(":visible");
+					if(fsClockVisible){
+						let fsStr	= jamSekarang.format("[<span class='fs-clock-icon'></span>]HH:mm");
+						if(app._lastFsClockVisible !== fsStr){
+							$('#full-screen-clock').html(fsStr);
+							app._lastFsClockVisible	= fsStr;
+						}
+						$('#full-screen-clock').slideDown();
+					}
+					else $('#full-screen-clock').slideUp(1000);
+
+					let jadwalDipake = app.jadwalHariIni;
+					let jadwalPlusIcon	= '';
+					// After isha, use tomorrow's schedule
+					if(jamDelay > app.isha){
+						jadwalDipake	= app.jadwalBesok;
+						jadwalPlusIcon	= '<span>+</span>';
+					}
+					$.each(app.db.prayName, function(k,v) {
+						let css= '';
+						if		(k == 'isha' 	&& jamDelay < app.isha		&& jamDelay > app.maghrib) 	css= 'active';
+						else if	(k == 'maghrib' && jamDelay < app.maghrib	&& jamDelay > app.asr) 		css= 'active';
+						else if	(k == 'asr' 	&& jamDelay < app.asr		&& jamDelay > app.dhuhr) 	css= 'active';
+						else if	(k == 'dhuhr' 	&& jamDelay < app.dhuhr		&& jamDelay > app.fajr) 	css= 'active';
+						else if	(k == 'fajr'	&& (jamDelay < app.fajr		|| jamDelay > app.isha))	css= 'active';//diatas isha dan sebelum subuh (beda hari)
+						jadwal += '<div class="row '+css+'"><div class="jadwal-nama">'+v+'</div><div class="jadwal-waktu">'+jadwalDipake[k] + jadwalPlusIcon + '</div></div>';
+					});
+					if(app._lastJadwalHtml !== jadwal){
+						$('#jadwal').html(jadwal);
+						app._lastJadwalHtml	= jadwal;
+					}
+				},
+				displaySchedule: function(){
+					// Fase yang sah pada tick ini (satu saja):
+					//   'menuju' | 'iqomah' | null (tidak ada fase countdown).
+					// Nilai target belum tentu terisi pada tick pertama (interval countDown
+					// baru mengisi countDownTarget di callback berikutnya), jadi perbandingan
+					// memakai JENIS fase, bukan nilai target.
+					let targetSah	= null;
+					let faseSah		= null;
+					$.each(app.db.prayName, function(k,v) {
+						if(k === 'sunrise') return;	// Shuruq bukan waktu sholat: jangan ada adzan/iqomah/sholat
+						let t			= moment(app[k]);
+						let detikMenujuAdzan	= t.diff(app.now(),'seconds');
+						let jendelaWaitAdzan	= (Number(app.db.timer.wait_adzan) || 0) * 60;
+						let jendelaAdzan		= (Number(app.db.timer.adzan) || 0) * 60;
+						let jendelaIqomah	= (Number(app.db.iqomah[k]) || 0) * 60;
+						let enIqomah		= t.add(Number(app.db.timer.adzan) || 0,'minutes').add(Number(app.db.iqomah[k]) || 0,'minutes');
+						if(detikMenujuAdzan > 0 && detikMenujuAdzan <= jendelaWaitAdzan){
+							faseSah		= 'menuju';
+							targetSah	= app[k].valueOf();
+						}
+						else if(detikMenujuAdzan <= -jendelaAdzan && detikMenujuAdzan > -(jendelaAdzan + jendelaIqomah) &&
+							!(app.now().format('dddd')=='Friday' && k=='dhuhr')){
+							faseSah		= 'iqomah';
+							targetSah	= enIqomah.valueOf();
+						}
+					});
+
+					// Hentikan timer yang fasenya tidak lagi sah SEBELUM memulai fase
+					// baru. Tanpa ini, timer lama (mis. iqomah siklus sebelumnya) memblokir
+					// fase berikutnya lewat guard `running`.
+					// Timer 'menuju' dan 'iqomah' memakai overlay berbeda; fase harus sama
+					// agar timer yang sedang berjalan tidak dibunuh setiap tick.
+					if(app.countDownTimer && app.countDownTimer.running){
+						let faseTimer	= app.countDownTimer.fase || null;
+						// Jangan bunuh timer yang targetnya SUDAH tercapai: biarkan
+						// interval menangani terminasi normalnya sendiri (beep + endCycle).
+						// Pembersih hanya untuk timer yang fasenya benar-benar tak relevan,
+						// mis. iqomah lama masih hidup saat sudah masuk window sholat lain.
+						let sudahSelesai	= app.countDownTarget && app.countDownTarget <= app.now().valueOf();
+						if(faseSah !== faseTimer && !sudahSelesai){
+							clearInterval(app.countDownTimer.interval);
+							app.countDownTimer	= false;
+							app.countDownTarget	= null;
+							app.countDownLast	= null;
+							app.countDownHold	= 0;
+							if(faseSah === null){
+								$('#right-counter').fadeOut(400);
+								$('#count-down').fadeOut(400);
+							}
+						}
+					}
+
+					$.each(app.db.prayName, function(k,v) {
+						if(k === 'sunrise') return;	// Shuruq bukan waktu sholat
+						// Pipeline: waitAdzanCountDown → adhan → iqomah → back to main display
+						let t			= moment(app[k]);
+						// Second-range triggers (not per-second string matching, which is easily
+						// missed when the page loads mid-window or the browser throttles timers).
+						// Every function below guards against re-entry, so calling them again each
+						// second while still inside the window is safe.
+						let detikMenujuAdzan	= t.diff(app.now(),'seconds');
+						let jendelaWaitAdzan	= (Number(app.db.timer.wait_adzan) || 0) * 60;
+						let jendelaAdzan		= (Number(app.db.timer.adzan) || 0) * 60;
+						let jendelaIqomah	= (Number(app.db.iqomah[k]) || 0) * 60;
+						let enIqomah		= t.add(Number(app.db.timer.adzan) || 0,'minutes').add(Number(app.db.iqomah[k]) || 0,'minutes');
+
+						if(detikMenujuAdzan > 0 && detikMenujuAdzan <= jendelaWaitAdzan)
+							app.runRightCountDown(app[k],'Menuju Adzan');	// CountDown sebelum adzan
+						else if(detikMenujuAdzan <= 0 && detikMenujuAdzan > -jendelaAdzan)
+							app.showDisplayAdzan(v, k);		// Display adzan
+						else if(detikMenujuAdzan <= -jendelaAdzan && detikMenujuAdzan > -(jendelaAdzan + jendelaIqomah)){
+							// Friday dhuhr: return to the main display right after the adhan
+							// (no iqomah). Other days/prayers: show the iqomah countdown.
+							if(!(app.now().format('dddd')=='Friday' && k=='dhuhr'))
+								app.runFullCountDown(enIqomah,'Menuju Iqomah');	// CountDown iqomah
+						}
+					});
+				},
+				showDisplayAdzan	: function(prayName, prayKey){
+					if (!app.adzanTimer){
+						$('#display-adzan>div').text('Adzan ' + prayName);
+						$('#display-adzan').show();
+						// Sisa waktu dari waktu sholat, bukan dari saat overlay dibuat,
+						// agar reload di tengah adzan tidak memperpanjang overlay.
+						let sisaMs	= app[prayKey].diff(app.now()) + ((Number(app.db.timer.adzan) || 0) * 60 * 1000) + 1500;
+						if(sisaMs < 0) sisaMs	= 0;
+						app.adzanTimer	= setTimeout(function(){
+							$('#display-adzan').fadeOut(800);
+							app.adzanTimer	= false;
+						}, sisaMs);
+					}
+				},
+				runFullCountDown: function(jam,title){
+						// Guard: a timer is already running → do not duplicate.
+						if (app.countDownTimer && app.countDownTimer.running) return;
+						// fase: dipakai displaySchedule untuk mendeteksi timer basi
+						app.countDownTimer	= { running: true, fase: 'iqomah' };
+
+						let firstRun	= true;
+						app.countDownTimer.interval = setInterval(function(){
+							let t	= app.countDownCalculate(jam);
+
+							// Title & labels are set once, on first appearance.
+							if (firstRun) {
+								$('#count-down .counter>h1').html(title);
+								$('#count-down').fadeIn(800);
+								app.setCounterLabels('#count-down');
+								firstRun	= false;
+							}
+
+							// End check BEFORE rendering so a late tick never shows negative digits.
+							if (t.distance < 1) {
+									// Iqomah finished: beep, then return to the main display
+									clearInterval(app.countDownTimer.interval);
+									app.countDownTimer	= false;
+									app.countDownTarget	= null; // reset lantai monotonik utk countdown berikutnya
+									$('#count-down').fadeOut(800);
+									app.endCycle();
+									return;
+								}
+
+							// The iqomah overlay shows minutes & seconds only (no hours).
+							// Hours are converted to minutes so the total duration stays exact.
+							var totalMenit	= (Number(t.hours) * 60) + Number(t.minutes);
+							totalMenit		= (totalMenit < 10) ? '0'+totalMenit : totalMenit;
+							app.renderFlipDigits('#count-down', totalMenit, t.seconds);
+						},1000);
+					},
+			// Prayer cycle finished (iqomah over): hide every overlay and play
+			// one beep as the end marker.
+			endCycle	: function(){
+				app.playBeepOnce();
+				$('.full-screen').fadeOut(800);
+			},
+				runRightCountDown	: function(jam,title){
+					// Guard: a timer is already running → do not duplicate.
+					if (app.countDownTimer && app.countDownTimer.running) return;
+					// fase: dipakai displaySchedule untuk mendeteksi timer basi
+					app.countDownTimer	= { running: true, fase: 'menuju' };
+
+					let firstRun	= true;
+					app.countDownTimer.interval = setInterval(function(){
+						let t	= app.countDownCalculate(jam);
+
+						// Title & labels are set once up front, not every second.
+						if (firstRun) {
+							$('#right-counter .counter>h1').html(title);
+							$('#right-counter').slideDown(800);
+							app.setCounterLabels('#right-counter');
+							firstRun	= false;
+						}
+
+						// End check BEFORE rendering so a late tick never shows negative digits.
+						if (t.distance < 1) {
+							// "Menuju X" countdown finished (adhan time reached): beep once
+							app.playBeepOnce();
+							clearInterval(app.countDownTimer.interval);
+							app.countDownTimer	= false;
+							app.countDownTarget	= null; // reset lantai monotonik utk countdown berikutnya
+							$('#right-counter').fadeOut(800);
+							return;
+						}
+
+						// The "Menuju" overlay shows minutes & seconds only (like iqomah).
+						// Hours are converted to minutes so the total duration stays exact.
+						var totalMenit	= (Number(t.hours) * 60) + Number(t.minutes);
+						totalMenit		= (totalMenit < 10) ? '0'+totalMenit : totalMenit;
+						app.renderFlipDigits('#right-counter', totalMenit, t.seconds);
+					},1000);
+				},
+				countDownCalculate(jam){
+					let jamSekarang	= app.now();
+					// Floor (not round): avoids rounding that produces duplicate seconds then jumps.
+					let wallDistance	= Math.floor(jam.diff(jamSekarang, 'seconds', true));
+
+					// --- Monotonic floor + snap re-sync (fix for jumping seconds) ---
+					// setInterval(1000) is imprecise; a late tick lets wall time advance
+					// >1 second, skipping a value (e.g. 34 -> 33 -> 31). Solution: decrease
+					// at most 1 per tick. If drift >= SNAP_THRESHOLD (big freeze/lag),
+					// snap to wall time so iqomah timing stays accurate.
+					// A backward clock jump (NTP/fake-hwclock) holds the value for a few
+					// ticks, then re-syncs so the countdown never freezes forever.
+					const SNAP_THRESHOLD	= 5; // detik
+					const MAX_HOLD_TICKS	= 3;
+					let targetKey	= jam.valueOf();
+					if (app.countDownTarget !== targetKey) {
+						app.countDownTarget	= targetKey;
+						app.countDownLast	= wallDistance;
+						app.countDownHold	= 0;
+					} else {
+						let drifted	= app.countDownLast - wallDistance;
+						if (drifted >= SNAP_THRESHOLD) {
+							app.countDownLast	= wallDistance; // snap re-sync ke jam dinding
+							app.countDownHold	= 0;
+						} else if (wallDistance < app.countDownLast) {
+							app.countDownLast	= app.countDownLast - 1; // clamp: turun tepat 1
+							app.countDownHold	= 0;
+						} else {
+							// wallDistance >= last (fast tick / clock went back): hold, but
+							// only for a few ticks so a backward NTP jump cannot freeze forever.
+							app.countDownHold	= (app.countDownHold || 0) + 1;
+							if (app.countDownHold > MAX_HOLD_TICKS) {
+								app.countDownLast	= wallDistance;
+								app.countDownHold	= 0;
+							}
+						}
+					}
+					let distance	= Math.max(0, app.countDownLast);
+
+					let hours = Math.floor((distance % (60 * 60 * 24)) / (60 * 60));
+					let minutes = Math.floor((distance % (60 * 60)) / 60);
+					let seconds = Math.floor((distance % 60));
+					hours	= (hours>=0		&& hours<10)	?'0'+hours:hours;
+					minutes	= (minutes>=0	&& minutes<10)	?'0'+minutes:minutes;
+					seconds	= (seconds>=0	&& seconds<10)	?'0'+seconds:seconds;
+					return	{
+						'distance'	: distance,
+						'hours'		: hours,
+						'minutes'	: minutes,
+					'seconds'	: seconds
+				};
+			},
+			// Render countdown digits as separate flip cards (minutes & seconds).
+			// Each digit's value is cached in app.flipCache; a card only flips when
+			// its value changes from the previous render. The first render just fills
+			// digits without animation. The .flip-anim class triggers the CSS flip.
+			renderFlipDigits(sel, minutes, seconds){
+				const minStr	= String(minutes).padStart(2, '0');
+				const secStr	= String(seconds).padStart(2, '0');
+				const digits	= {
+					'min-tens'	: minStr[0],
+					'min-units'	: minStr[1],
+					'sec-tens'	: secStr[0],
+					'sec-units'	: secStr[1]
+				};
+				app.flipCache	= app.flipCache || {};
+				for (const loc in digits) {
+					const key	= sel + '|' + loc;
+					const val	= digits[loc];
+					const $digit	= $(sel + ' .flip-digit[data-loc="' + loc + '"]');
+					if (!$digit.length) continue;
+					if (app.flipCache[key] === val) continue;	// tidak berubah → tanpa flip
+					const firstRender	= !(key in app.flipCache);
+					app.flipCache[key]	= val;
+					$digit.text(val);
+					if (firstRender) continue;	// render awal tanpa animasi
+					$digit.removeClass('flip-anim');
+					// Forced reflow is required: without it the browser does not restart
+					// the animation on the next change (the flip only runs once)
+					void ($digit[0] && $digit[0].offsetWidth);
+					$digit.addClass('flip-anim');
+				}
+			},
+			setCounterLabels(sel){
+				$(sel + ' .ii .flip-label').html(app.db.timeName.Minutes);
+				$(sel + ' .ss .flip-label').html(app.db.timeName.Seconds);
+			}
+		}
+		app.initialize();
+	</script>
+
+
+</body></html>
