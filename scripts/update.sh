@@ -90,10 +90,13 @@ APP_OWNER="$(stat -c %U "$APP_DIR")"
 APP_OWNER_HOME="$(getent passwd "$APP_OWNER" | cut -d: -f6)"
 
 if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
-  if find .git ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
-    log "Ada file .git milik non-$APP_OWNER — memperbaiki kepemilikan..."
-    chown -R "$APP_OWNER":"$APP_OWNER" .git
-    ok ".git dikembalikan ke $APP_OWNER."
+  # .git DAN working tree: file runtime (db/*.json ditulis server saat
+  # pernah jalan sebagai root) ikut mematahkan git reset sebagai pemilik.
+  if find .git db -maxdepth 2 ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q . \
+     || find . -maxdepth 2 -name "*.json" -path "./db/*" ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
+    log "Ada file milik non-$APP_OWNER — memperbaiki kepemilikan (.git + db)..."
+    chown -R "$APP_OWNER":"$APP_OWNER" .git db 2>/dev/null || chown -R "$APP_OWNER":"$APP_OWNER" .git
+    ok "Kepemilikan dikembalikan ke $APP_OWNER."
   fi
 fi
 
@@ -294,8 +297,8 @@ fi
 # Bila ada (mis. git versi lama menulis sebelum git_as dipakai), sembuhkan.
 if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
   if find .git ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
-    chown -R "$APP_OWNER":"$APP_OWNER" .git
-    ok ".git disembuhkan pasca-update (milik $APP_OWNER)."
+    chown -R "$APP_OWNER":"$APP_OWNER" .git db 2>/dev/null || chown -R "$APP_OWNER":"$APP_OWNER" .git
+    ok ".git + db disembuhkan pasca-update (milik $APP_OWNER)."
   fi
 fi
 
