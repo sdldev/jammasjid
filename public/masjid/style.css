@@ -11,6 +11,9 @@
 	src: url('/fonts/Sketsaramadhan-nRLAO.otf') format('opentype');
 	font-weight: normal;
 	font-style: normal;
+	/* swap: teks langsung tampil dengan font cadangan, font dekoratif menyusul
+	   (menghilangkan peringatan "Slow network ... fallback font" di console) */
+	font-display: swap;
 }
 
 

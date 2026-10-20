@@ -77,7 +77,9 @@ export async function renderDisplay(env, template) {
     'Content-Type': 'text/html; charset=utf-8',
     'Cache-Control': 'public, max-age=60',
     'Cache-Tag': 'cache-display',
-    'CDN-Cache-Tag': 'cache-display'
+    'CDN-Cache-Tag': 'cache-display',
+    // Jangan diindeks mesin pencari (cadangan bagi meta robots di template).
+    'X-Robots-Tag': 'noindex, nofollow'
   }
   return new Response(html, { headers })
 }

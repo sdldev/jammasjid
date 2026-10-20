@@ -64,6 +64,16 @@ export default {
         headers
       })
     }
+    // Jangan diindeks mesin pencari (cadangan bagi meta robots di HTML).
+    if (response.status === 200 && /\.html?($|\?)/i.test(url.pathname)) {
+      const headers = new Headers(response.headers)
+      headers.set('X-Robots-Tag', 'noindex, nofollow')
+      return new Response(response.body, {
+        status: response.status,
+        statusText: response.statusText,
+        headers
+      })
+    }
     return response
   }
 }

@@ -94,6 +94,8 @@ function serveStatic(req, res, pathname) {
   const headers = { 'Content-Type': MIME[extname(filePath).toLowerCase()] || 'application/octet-stream' }
   if (MEDIA_CACHE_PATTERN.test(filePath)) headers['Cache-Control'] = MEDIA_CACHE_CONTROL
   else if (/\.(js|css|json|html)$/i.test(filePath)) headers['Cache-Control'] = CODE_CACHE_CONTROL
+  // Jangan diindeks mesin pencari (cadangan bagi meta robots di HTML).
+  if (/\.html?$/i.test(filePath)) headers['X-Robots-Tag'] = 'noindex, nofollow'
   res.writeHead(200, headers)
   res.end(readFileSync(filePath))
 }
