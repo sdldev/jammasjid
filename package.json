@@ -1,6 +1,6 @@
 {
   "name": "jam-masjid-santrimu",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "private": true,
   "description": "Jam Masjid Santrimu - jam digital & jadwal sholat untuk layar masjid (runtime lokal Bun; deploy Cloudflare Workers)",
   "engines": {
