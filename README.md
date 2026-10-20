@@ -159,13 +159,26 @@ sudo bash /opt/jam-masjid/scripts/update.sh
 ```
 
 `update.sh` mengambil commit terbaru, `bun install`, lalu restart service.
-Bila update gagal, repo **di-rollback otomatis** ke commit sebelumnya.
+Bila update gagal, repo **di-rollback otomatis** ke commit sebelumnya
+termasuk memulihkan `db/` dan `.env` dari backup.
+
+Skrip ini aman dijalankan walau working tree kotor:
+
+- File **data/runtime** (`db/*`, `.env`, `public/img/logo-*`) yang berubah
+  saat aplikasi berjalan otomatis dibackup lalu dibersihkan, dan
+  **dipulihkan kembali** setelah update (isi db lama tetap terbaca karena
+  `getDb` shallow-merge dengan `DEFAULT_DB`).
+- Modifikasi **file kode** di STB otomatis di-`git stash` dengan pesan
+  ber-timestamp — tidak hilang; pulihkan dengan `git stash pop`.
 
 | Opsi | Keterangan |
 |---|---|
-| `--backup` | backup `db/` dan `.env` ke `/var/backups/jam-masjid-<waktu>` |
 | `--no-restart` | update kode saja, tanpa restart |
+| `--no-backup` | lewati backup (tidak disarankan) |
 | `--branch NAMA` | branch git (default `main`) |
+
+Backup selalu dibuat otomatis ke `/var/backups/jam-masjid/<waktu>/`
+(db, `.env`, commit hash; dirotasi 10 run terbaru).
 
 Catatan: unit systemd yang sudah terpasang **tidak ditimpa** otomatis; bila
 template di `deploy/` berubah, skrip memberi peringatan agar Anda membandingkan
