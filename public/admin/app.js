@@ -903,9 +903,11 @@ var app = {
     }
 
     function salinUrl(url, $btn) {
+      var ikonAsli = $btn.html()
       function sukses() {
-        $btn.text('Tersalin!')
-        setTimeout(function () { $btn.text('Salin link') }, 1500)
+        $btn.html('<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+          'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>')
+        setTimeout(function () { $btn.html(ikonAsli) }, 1500)
       }
       function fallback() {
         // HTTP (non-HTTPS) tidak punya clipboard API — pakai cara lama.
@@ -930,10 +932,15 @@ var app = {
       if (aktif && st.url) {
         stopPollingQt()
         html += '<div class="field"><label>URL publik aktif</label>' +
-          '<div style="display:flex;gap:8px">' +
-          '<input class="input" id="qt-url" readonly value="' + st.url + '" style="flex:1">' +
-          '<button class="btn btn-primary" id="btn-qt-copy" type="button" style="white-space:nowrap">Salin link</button>' +
-          '</div></div>' +
+          '<div style="display:flex;align-items:stretch;gap:6px">' +
+          '<input class="input" id="qt-url" readonly value="' + st.url + '" ' +
+          'style="flex:1;min-width:0;font-size:13px" onclick="this.select()">' +
+          '<button class="btn btn-primary" id="btn-qt-copy" type="button" title="Salin link" ' +
+          'style="flex:0 0 auto;width:44px;padding:0;display:flex;align-items:center;justify-content:center">' +
+          '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+          'stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/>' +
+          '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
+          '</button></div></div>' +
           '<p class="field-note">Bagikan URL ini ke siapa pun yang perlu melihat display. ' +
           '<b>Halaman admin tetap butuh password</b> — jangan bagikan password.</p>'
       } else if (aktif) {
