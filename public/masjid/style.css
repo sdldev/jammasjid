@@ -477,9 +477,9 @@ h1,h2,h3,h4,h5{
 	padding:0 4vw;
 }
 #logo-row img{
-	height:12vw;		/* proporsional teks 10vw × line-height 1.2 */
+	height:6vw;			/* proporsional teks: ±0,6× tinggi huruf nama masjid */
 	width:auto;
-	max-width:25vw;
+	max-width:15vw;
 	object-fit:contain;	/* aman untuk logo landscape maupun persegi */
 	flex:0 0 auto;
 }
@@ -584,7 +584,7 @@ h1,h2,h3,h4,h5{
 		margin-top: auto;
 		margin-bottom: auto;
 	}
-	#main > #logo-row img{ height: 11vw; }
+	#main > #logo-row img{ height: 6vw; }
 
 	/* ===== Columns: clock (hero) first, schedule below =====
 	   gap ~22vw menyamakan jeda antar-seksi dengan margin auto (±3 bagian),
