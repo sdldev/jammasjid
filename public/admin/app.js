@@ -856,24 +856,23 @@ var app = {
     var emails = ((app.db.tailscale && app.db.tailscale.pengurus_emails) || []).join(', ')
     $c().html(
       '<div class="card">' +
-      '<p class="field-note">Akses remote lewat Tailscale. Developer (pemilik tailnet) ' +
-      'bisa SSH + admin web. Email pengurus di bawah hanya bisa membuka halaman admin ' +
-      'lewat jaringan Tailscale — boleh lebih dari satu, pisahkan dengan koma.</p>' +
+      '<p class="field-note">Bagian ini mengatur siapa saja yang bisa membuka halaman admin ' +
+      'dari jarak jauh. Isi email pengurus di bawah — boleh lebih dari satu, pisahkan dengan koma.</p>' +
       '<form id="f-remote">' +
       field('Email pengurus', 'emails', emails,
         { placeholder: 'pengurus1@gmail.com, pengurus2@gmail.com', required: false, maxlength: 500 }) +
-      '<p class="field-note">Perangkat pengurus wajib login Tailscale dengan email tersebut, ' +
-      'lalu buka http://&lt;IP-STB&gt;:' + (location.port || '11111') + '/admin/.</p>' +
-      '<button class="btn btn-primary btn-block" type="submit">Simpan & terapkan ke Tailscale</button>' +
+      '<p class="field-note">Hp/laptop pengurus harus sudah terpasang aplikasi Tailscale dan login ' +
+      'dengan email tersebut, lalu buka alamat admin seperti biasa.</p>' +
+      '<button class="btn btn-primary btn-block" type="submit">Simpan</button>' +
       '</form></div>' +
       '<div class="card">' +
-      '<p class="field-note"><b>Langkah sekali di Admin Console Tailscale:</b><br>' +
-      '1. Machines → STB ini → "..." → Disable key expiry.<br>' +
-      '2. Otomatis permanen: buat OAuth client (Settings → OAuth clients, scope ACL — ' +
-      'tidak kedaluwarsa, beda dengan API key yang hanya 90 hari), lalu isi ' +
-      'TS_CLIENT_ID dan TS_CLIENT_SECRET di .env + restart.<br>' +
-      '3. Tanpa kredensial itu, server hanya menyiapkan file db/tailscale-acl.json — ' +
-      'salin isinya ke Access Controls lalu Simpan.</p>' +
+      '<p class="field-note"><b>Pengaturan pertama kali (untuk teknisi):</b><br>' +
+      '1. Di situs Tailscale, matikan kedaluwarsa kunci perangkat STB ini ' +
+      '(Machines → STB → "..." → Disable key expiry).<br>' +
+      '2. Agar tidak perlu diulang tiap beberapa bulan, buat OAuth client ' +
+      '(Settings → OAuth clients), lalu isi TS_CLIENT_ID dan TS_CLIENT_SECRET di file .env dan restart.<br>' +
+      '3. Tanpa itu, server hanya menyiapkan file db/tailscale-acl.json — ' +
+      'salin isinya ke menu Access Controls di situs Tailscale lalu simpan.</p>' +
       '</div>'
     )
     $('#f-remote').on('submit', function (e) {
@@ -881,20 +880,20 @@ var app = {
       var $btn = $(this).find('button[type=submit]').prop('disabled', true).text('Menerapkan...')
       app.api('tailscaleSetup', { emails: $('[name=emails]').val() }).done(function (res) {
         if (res.success) {
-          app.toast('success', 'ACL Tailscale diperbarui (' + ((res.data && res.data.applied) || 0) + ' email)')
+          app.toast('success', 'Pengaturan tersimpan (' + ((res.data && res.data.applied) || 0) + ' email)')
           app.refresh()
         } else {
           app.toast('danger', res.data)
         }
       }).always(function () {
-        $btn.prop('disabled', false).text('Simpan & terapkan ke Tailscale')
+        $btn.prop('disabled', false).text('Simpan')
       })
     })
 
     // --- Quick Tunnel (akses publik sementara) -------------------------------
     var $card = $(
       '<div class="card"><div id="qt-body">' +
-      '<p class="field-note">Memuat status Quick Tunnel...</p></div></div>'
+      '<p class="field-note">Memuat status akses publik...</p></div></div>'
     ).appendTo($c())
 
     var pollingQt = null
@@ -925,13 +924,12 @@ var app = {
     function renderTunnel(st) {
       var aktif = st && st.running
       var html =
-        '<p class="field-note"><b>Akses publik sementara (Cloudflare Quick Tunnel).</b><br>' +
-        'Saat aktif, display + halaman admin ini bisa dibuka dari mana saja lewat URL ' +
-        'https://*.trycloudflare.com — tanpa login Tailscale. URL berubah tiap kali ' +
-        'dinyalakan dan mati otomatis saat server restart.</p>'
+        '<p class="field-note"><b>Akses publik sementara.</b><br>' +
+        '<p class="field-note">Saat aktif, halaman display dan admin bisa dibuka dari mana saja lewat ' +
+        'sebuah link. Link berubah setiap kali dinyalakan dan mati otomatis saat server direstart.</p>'
       if (aktif && st.url) {
         stopPollingQt()
-        html += '<div class="field"><label>URL publik aktif</label>' +
+        html += '<div class="field"><label>Link publik aktif</label>' +
           '<div style="display:flex;align-items:stretch;gap:6px">' +
           '<input class="input" id="qt-url" readonly value="' + st.url + '" ' +
           'style="flex:1;min-width:0;font-size:13px" onclick="this.select()">' +
@@ -941,21 +939,21 @@ var app = {
           'stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2"/>' +
           '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>' +
           '</button></div></div>' +
-          '<p class="field-note">Bagikan URL ini ke siapa pun yang perlu melihat display. ' +
-          '<b>Halaman admin tetap butuh password</b> — jangan bagikan password.</p>'
+          '<p class="field-note">Bagikan link ini ke yang perlu melihat display. ' +
+          '<b>Halaman admin tetap membutuhkan password</b> — jangan bagikan password.</p>'
       } else if (aktif) {
-        html += '<p class="field-note" id="qt-waiting">Tunnel menyala, menunggu URL publik dari Cloudflare…</p>' +
-          '<p class="field-note"><span class="qt-dots">⏳</span> biasanya 5–15 detik, halaman ini tidak perlu dimuat ulang.</p>'
+        html += '<p class="field-note" id="qt-waiting">Menyalakan, menunggu link dari server…</p>' +
+          '<p class="field-note"><span class="qt-dots">⏳</span> biasanya 5–15 detik; halaman ini tidak perlu dimuat ulang.</p>'
       }
       if (st && st.error) {
         html += '<p class="field-note" style="color:#b91c1c">Error: ' + st.error + '</p>'
       }
       if (st && !aktif && st.log && /not found|ENOENT/.test(st.log)) {
-        html += '<p class="field-note" style="color:#b91c1c">cloudflared belum terpasang di STB. ' +
-          'Pasang: sudo bash scripts/install.sh (tanpa --skip-cloudflared)</p>'
+        html += '<p class="field-note" style="color:#b91c1c">Program penghubung (cloudflared) belum terpasang di STB. ' +
+          'Minta teknisi memasangnya: sudo bash scripts/install.sh</p>'
       }
       html += '<button class="btn ' + (aktif ? 'btn-danger' : 'btn-primary') + ' btn-block" id="btn-qt">' +
-        (aktif ? 'Matikan akses publik' : 'Aktifkan akses publik') + '</button>'
+        (aktif ? 'Matikan akses publik' : 'Nyalakan akses publik') + '</button>'
       $card.find('#qt-body').html(html)
 
       $('#btn-qt-copy').on('click', function () {
@@ -975,7 +973,7 @@ var app = {
             app.toast('success', 'Akses publik dimatikan')
             muatStatus()
           } else {
-            app.toast('success', 'Tunnel dimulai — URL akan muncul otomatis di sini')
+            app.toast('success', 'Akses publik dinyalakan — link akan muncul otomatis di sini')
             // Langsung tampilkan status "menunggu", lalu poll tiap 2 detik
             // sampai URL keluar (atau tunnel mati). Maks 60 detik.
             renderTunnel({ running: true, url: '' })
