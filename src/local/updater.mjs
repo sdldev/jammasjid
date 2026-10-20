@@ -20,6 +20,12 @@ const KEEP_LOGS = 5
 // Hanya satu update yang berjalan pada satu waktu (per proses).
 let current = null   // { startedAt, logFile, exitCode|null }
 
+// Status "running" ditentukan oleh UMUR log, bukan keadaan proses anak:
+// server di-restart update.sh (restart-delay) mematikan proses ini sebelum
+// child.on('close') terekam — tanpa guard, update berikutnya ditolak
+// 'sedang berjalan' selamanya. Ambang: log tak berubah > 30 detik = selesai.
+const STALE_MS = 30_000
+
 function pruneLogs() {
   try {
     const files = readdirSync(LOG_DIR)
@@ -31,7 +37,12 @@ function pruneLogs() {
 }
 
 export function updateRunning() {
-  return current && current.exitCode === null ? current : null
+  if (!current || current.exitCode !== null) return null
+  try {
+    const stale = Date.now() - statSync(current.logFile).mtimeMs > STALE_MS
+    if (stale) current.exitCode = -2   // -2 = log basi (server restart memutus proses)
+  } catch { current.exitCode = -2 }
+  return current.exitCode === null ? current : null
 }
 
 // Luncurkan update.sh. Mengembalikan { started, logFile } atau
@@ -78,10 +89,13 @@ export function readUpdateStatus() {
   const isCurrent = current && current.logFile === latest
   const text = readFileSync(latest, 'utf8')
   const lines = text.trimEnd().split('\n')
+  // -2 = log basi: server ter-restart sebelum exit tercatat — anggap selesai.
+  const effectiveExit = isCurrent && current.exitCode === null &&
+    Date.now() - statSync(latest).mtimeMs > STALE_MS ? -2 : (isCurrent ? current.exitCode : null)
   return {
-    running: !!(isCurrent && current.exitCode === null),
+    running: effectiveExit === null && isCurrent,
     log: lines.slice(-60).join('\n'),
-    exitCode: isCurrent ? current.exitCode : null,
+    exitCode: effectiveExit,
     logFile: latest
   }
 }
