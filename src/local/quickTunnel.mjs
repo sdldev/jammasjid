@@ -10,6 +10,8 @@
 
 import { spawn } from 'node:child_process'
 import { existsSync } from 'node:fs'
+import { homedir } from 'node:os'
+import { join } from 'node:path'
 
 // State proses in-memory: hilang saat server restart = tunnel otomatis mati.
 let current = null   // { proc, url|null, startedAt, log[], err|null }
@@ -18,8 +20,14 @@ const URL_RE = /https:\/\/[a-z0-9-]+\.trycloudflare\.com/i
 const MAX_LOG = 40
 
 function cariBin() {
-  // Lokasi umum: PATH, /usr/local/bin (dipasang install.sh)
-  for (const p of ['/usr/local/bin/cloudflared', '/usr/bin/cloudflared']) {
+  // Lokasi umum: /usr/local/bin (install.sh, perlu sudo), ~/.local/bin
+  // (pemasangan manual tanpa sudo — layak di STB), /usr/bin, lalu PATH.
+  const kandidat = [
+    '/usr/local/bin/cloudflared',
+    join(homedir(), '.local', 'bin', 'cloudflared'),
+    '/usr/bin/cloudflared'
+  ]
+  for (const p of kandidat) {
     if (existsSync(p)) return p
   }
   return 'cloudflared'   // andalkan PATH
