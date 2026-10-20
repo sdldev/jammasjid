@@ -41,9 +41,12 @@ const MIME = {
   '.webmanifest': 'application/manifest+json'
 }
 
-// Static assets (media + css/js): 30-day browser cache (same rule as worker.js)
-const MEDIA_CACHE_PATTERN = /\.(jpe?g|png|gif|webp|otf|ttf|woff2?|mp3|css|js|json)$/i
+// Static assets. Media (gambar/font/audio) boleh di-cache 30 hari.
+// Kode (js/css/json/html) JANGAN — versi lama yang ter-cache menutupi fitur
+// baru setelah update (kasus nyata: app.js admin). Kode cukup cache pendek.
+const MEDIA_CACHE_PATTERN = /\.(jpe?g|png|gif|webp|otf|ttf|woff2?|mp3)$/i
 const MEDIA_CACHE_CONTROL = 'public, max-age=2592000'
+const CODE_CACHE_CONTROL = 'public, max-age=300, must-revalidate'
 
 const env = createLocalEnv()
 
@@ -90,6 +93,7 @@ function serveStatic(req, res, pathname) {
   }
   const headers = { 'Content-Type': MIME[extname(filePath).toLowerCase()] || 'application/octet-stream' }
   if (MEDIA_CACHE_PATTERN.test(filePath)) headers['Cache-Control'] = MEDIA_CACHE_CONTROL
+  else if (/\.(js|css|json|html)$/i.test(filePath)) headers['Cache-Control'] = CODE_CACHE_CONTROL
   res.writeHead(200, headers)
   res.end(readFileSync(filePath))
 }

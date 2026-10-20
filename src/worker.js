@@ -10,13 +10,14 @@ import template from './templates/index.html'
 
 export { DisplayHub }
 
-// Static assets (media + css/js) almost never change → 30-day browser
-// cache so they are not revalidated on every page load.
-// NOTE: the display reloads on db change (SSE), so stale css/js is not an issue
-// for the screen itself; a deploy of NEW assets still needs a cache-bust
-// (rename) or the browser may serve the old file up to 30 days.
-const MEDIA_CACHE_PATTERN = /\.(jpe?g|png|gif|webp|otf|ttf|woff2?|mp3|css|js|json)$/i
+// Static assets. Media (gambar/font/audio) hampir tak pernah berubah → cache
+// 30 hari agar tidak divalidasi ulang tiap muat halaman.
+// Kode (js/css/json) memakai cache PENDEK: versi lama yang ter-cache 30 hari
+// menutupi fitur baru setelah deploy (kasus nyata: app.js admin).
+const MEDIA_CACHE_PATTERN = /\.(jpe?g|png|gif|webp|otf|ttf|woff2?|mp3)$/i
 const MEDIA_CACHE_CONTROL = 'public, max-age=2592000'
+const CODE_CACHE_PATTERN = /\.(js|css|json)$/i
+const CODE_CACHE_CONTROL = 'public, max-age=300, must-revalidate'
 
 export default {
   async fetch(request, env) {
@@ -52,9 +53,11 @@ export default {
 
     // Fall back to static assets
     const response = await env.ASSETS.fetch(request)
-    if (response.status === 200 && MEDIA_CACHE_PATTERN.test(url.pathname)) {
+    const isMedia = MEDIA_CACHE_PATTERN.test(url.pathname)
+    const isCode = CODE_CACHE_PATTERN.test(url.pathname)
+    if (response.status === 200 && (isMedia || isCode)) {
       const headers = new Headers(response.headers)
-      headers.set('Cache-Control', MEDIA_CACHE_CONTROL)
+      headers.set('Cache-Control', isMedia ? MEDIA_CACHE_CONTROL : CODE_CACHE_CONTROL)
       return new Response(response.body, {
         status: response.status,
         statusText: response.statusText,
