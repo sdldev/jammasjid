@@ -37,13 +37,14 @@ gray = ImageOps.invert(logo.convert('L'))
 alpha = gray.point(lambda p: 255 if p >= 60 else 0)
 flat = Image.new('RGBA', logo.size, GOLD + (0,))
 flat.putalpha(alpha)
-tw = 380
+tw = 300
 logo_big = flat.resize((tw, int(flat.height*tw/flat.width)), Image.LANCZOS)
 logo_big.putalpha(logo_big.getchannel('A').point(lambda p: 255 if p >= 128 else 0))
 
-ly = 200
+CX, CY = 700, 400   # terkalibrasi: u-boot S905 scale ~0.73 + offset
+ly = CY - 270
 img = img.convert('RGBA')
-img.paste(logo_big, ((W-logo_big.width)//2, ly), logo_big)
+img.paste(logo_big, (CX - logo_big.width//2, ly), logo_big)
 
 d = ImageDraw.Draw(img)
 F_SKETSA = os.path.join(ROOT, 'public/fonts/Sketsaramadhan-nRLAO.otf')
@@ -51,17 +52,17 @@ F_SKETSA = os.path.join(ROOT, 'public/fonts/Sketsaramadhan-nRLAO.otf')
 def center(text, font, y, fill, spacing=0):
     if spacing:
         ws = [d.textlength(c, font=font) for c in text]
-        x = (W - (sum(ws) + spacing*(len(text)-1))) / 2
+        x = (CX - (sum(ws) + spacing*(len(text)-1))) / 2
         for c, w in zip(text, ws):
             d.text((x, y), c, font=font, fill=fill); x += w + spacing
     else:
-        d.text(((W-d.textlength(text, font=font))/2, y), text, font=font, fill=fill)
+        d.text((CX - d.textlength(text, font=font)/2, y), text, font=font, fill=fill)
 
-y0 = ly + logo_big.height + 30
-d.rectangle([(W-240)//2, y0, (W+240)//2, y0+3], fill=GOLD)
-center("Praying Times", ImageFont.truetype(F_SKETSA, 118), y0+30, WHITE)
-center("by", ImageFont.truetype(F_FIRA_R, 32), y0+172, MUTE)
-center("santrimu", ImageFont.truetype(F_FIRA_R, 64), y0+225, GOLD, spacing=10)
+y0 = ly + logo_big.height + 18
+d.rectangle([CX-130, y0, CX+130, y0+3], fill=GOLD)
+center("Praying Times", ImageFont.truetype(F_SKETSA, 105), y0+16, WHITE)
+center("by", ImageFont.truetype(F_FIRA_R, 28), y0+130, MUTE)
+center("santrimu", ImageFont.truetype(F_FIRA_R, 50), y0+168, GOLD, spacing=8)
 
 img.convert('RGB').save(OUT)
 print("tersimpan:", OUT)
