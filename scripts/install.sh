@@ -132,6 +132,41 @@ else
   warn "Pembersihan apt dilewati (--skip-cleanup)."
 fi
 
+# ---------- 2b. Matikan service & applet yang tidak dipakai display ---------
+# Aman diulang (idempoten). WiFi (NetworkManager/wpa_supplicant) TIDAK disentuh.
+SERVIS_MATI=(apache2 cups cups-browsed bluetooth avahi-daemon unattended-upgrades)
+for s in "${SERVIS_MATI[@]}"; do
+  if systemctl list-unit-files "$s.service" >/dev/null 2>&1; then
+    systemctl disable --now "$s.service" >/dev/null 2>&1 \
+      && log "Service dimatikan: $s" \
+      || warn "Gagal mematikan $s (lanjut)."
+  fi
+done
+
+# Applet desktop (bluetooth/audio/printer tray) tidak dibutuhkan kiosk dan
+# memakan ±250 MB RAM. Dihapus dari autostart XDG (rename → .disabled, bukan
+# dihapus, agar mudah dikembalikan). nm-applet ikut dimatikan dari autostart —
+# WiFi tetap jalan lewat NetworkManager; bila perlu atur WiFi dari GUI,
+# jalankan `nm-applet &` manual.
+APPLET_MATI=(blueman pasystray print-applet applet nm-applet polkit-gnome)
+dihapus=0
+for d in /etc/xdg/autostart "$APP_HOME/.config/autostart"; do
+  [[ -d "$d" ]] || continue
+  for f in "$d"/*.desktop; do
+    [[ -e "$f" ]] || continue
+    base="$(basename "$f" .desktop)"
+    for a in "${APPLET_MATI[@]}"; do
+      if [[ "$base" == *"$a"* ]]; then
+        mv "$f" "$f.disabled" 2>/dev/null && dihapus=$((dihapus+1))
+        break
+      fi
+    done
+  done
+done
+# Matikan juga instance yang sedang berjalan di sesi desktop sekarang
+pkill -u "$APP_USER" -f 'blueman-applet|pasystray|nm-applet|applet.py|polkit-gnome-authentication-agent' 2>/dev/null || true
+ok "Applet desktop dinonaktifkan ($dihapus entri autostart). WiFi tetap berfungsi (NetworkManager aktif)."
+
 # ---------- 3. dependensi ----------------------------------------------------
 log "Memasang dependensi sistem..."
 APT_PKGS=(curl ca-certificates git unzip jq rsync x11-utils)
