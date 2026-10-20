@@ -106,7 +106,7 @@ async function invalidateDisplayCache(origin) {
 
 // --- handlers ---------------------------------------------------------------
 
-async function handleLogin(body, env) {
+async function handleLogin(body, env, request) {
   const user = body.dt?.user || false
   const pass = body.dt?.pass || false
   if (!user || !pass) return fail('Data tidak valid...')
@@ -125,11 +125,11 @@ async function handleLogin(body, env) {
     return fail('Anda tidak memiliki akses...')
   }
   const token = await createSessionToken(env.AUTH_SECRET, user)
-  return json({ success: true, registered: true, data: null }, { 'Set-Cookie': sessionSetCookie(token) })
+  return json({ success: true, registered: true, data: null }, { 'Set-Cookie': sessionSetCookie(token, request) })
 }
 
-async function handleLogout() {
-  return json({ success: true, registered: false, data: null }, { 'Set-Cookie': sessionClearCookie() })
+async function handleLogout(request) {
+  return json({ success: true, registered: false, data: null }, { 'Set-Cookie': sessionClearCookie(request) })
 }
 
 async function handleChangeDbCheck(env) {
@@ -222,14 +222,14 @@ async function handleGetPraySetting(env) {
   return ok(data)
 }
 
-async function handleResetDevice(dt, env, origin) {
+async function handleResetDevice(dt, env, origin, request) {
   if (dt !== 'KONFIRMASI') return fail('Not confirm...')
   await putDb(env, structuredClone(DEFAULT_DB))
   await notifyHub(env)
   await invalidateDisplayCache(origin)
   return json(
     { success: true, registered: false, data: null },
-    { 'Set-Cookie': sessionClearCookie() }
+    { 'Set-Cookie': sessionClearCookie(request) }
   )
 }
 
@@ -321,8 +321,8 @@ async function handleLogoRemove(dt, env, origin) {
 // --- entrypoint -------------------------------------------------------------
 
 const HANDLERS = {
-  login: (body, env) => handleLogin(body, env),
-  logout: handleLogout,
+  login: (body, env, _origin, request) => handleLogin(body, env, request),
+  logout: (_body, _env, _origin, request) => handleLogout(request),
   changeDbCheck: (_body, env) => handleChangeDbCheck(env),
   readDatabase: (_body, env) => handleReadDatabase(env),
   formSave: (body, env, origin) => handleFormSave(body.dt || {}, env, origin),
@@ -332,7 +332,7 @@ const HANDLERS = {
   kemenagKabkota: (body) => handleKemenagKabkota(body.dt || {}),
   kemenagProvinsi: () => handleKemenagProvinsi(),
   logoRemove: (body, env, origin) => handleLogoRemove(body.dt || {}, env, origin),
-  resetDevice: (body, env, origin) => handleResetDevice(body.dt, env, origin)
+  resetDevice: (body, env, origin, request) => handleResetDevice(body.dt, env, origin, request)
 }
 
 const PUBLIC_HANDLERS = new Set(['login', 'logout', 'changeDbCheck'])
@@ -366,7 +366,7 @@ export async function handleProses(request, env) {
   if (!PUBLIC_HANDLERS.has(id) && !user) {
     return unregistered()
   }
-  return HANDLERS[id](body, env, origin)
+  return HANDLERS[id](body, env, origin, request)
 }
 
 export { COOKIE_NAME }

@@ -34,6 +34,10 @@ Environment=DISPLAY=:0
 Environment=XAUTHORITY=/root/.Xauthority
 ExecStart=/usr/bin/chromium \
   --kiosk \
+  --force-device-scale-factor=1 \
+  --high-dpi-support=1 \
+  --start-fullscreen \
+  --window-position=0,0 \
   --disable-pinch \
   --autoplay-policy=no-user-gesture-required \
   --disable-features=Translate,TranslateUI \

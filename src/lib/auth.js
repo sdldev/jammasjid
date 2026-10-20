@@ -60,12 +60,27 @@ export async function verifySessionToken(secret, token) {
   }
 }
 
-export function sessionSetCookie(token) {
-  return `${COOKIE_NAME}=${token}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}`
+// Flag `Secure` hanya dipasang pada origin HTTPS. Admin sering diakses lewat
+// http://<ip-stb> di LAN; browser membuang cookie Secure pada HTTP sehingga
+// login "berhasil" tapi sesi hilang (dashboard tidak pernah muncul).
+function isSecureOrigin(request) {
+  // Default aman: tanpa request dianggap HTTPS.
+  if (!request) return true
+  try {
+    return new URL(request.url).protocol === 'https:'
+  } catch {
+    return true
+  }
 }
 
-export function sessionClearCookie() {
-  return `${COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0`
+export function sessionSetCookie(token, request) {
+  const secure = isSecureOrigin(request) ? '; Secure' : ''
+  return `${COOKIE_NAME}=${token}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${SESSION_TTL_MS / 1000}${secure}`
+}
+
+export function sessionClearCookie(request) {
+  const secure = isSecureOrigin(request) ? '; Secure' : ''
+  return `${COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${secure}`
 }
 
 export { COOKIE_NAME }

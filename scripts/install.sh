@@ -241,6 +241,9 @@ Environment=XAUTHORITY=$APP_HOME/.Xauthority
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 40); do curl -sf http://localhost:$PORT/ >/dev/null && exit 0; sleep 1; done; exit 1'
 ExecStart=$CHROME_BIN \\
   --kiosk \\
+  --force-device-scale-factor=1 \\
+  --start-fullscreen \\
+  --window-position=0,0 \\
   --disable-pinch \\
   --autoplay-policy=no-user-gesture-required \\
   --disable-features=Translate,TranslateUI \\

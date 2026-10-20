@@ -32,13 +32,28 @@ describe('auth', () => {
     expect(getCookie(req, 'missing')).toBeNull()
   })
 
-  it('session cookie memakai flag keamanan penuh', () => {
-    const set = sessionSetCookie('token-x')
+  it('session cookie memakai flag keamanan penuh pada https', () => {
+    const req = new Request('https://jam.example/api/proses')
+    const set = sessionSetCookie('token-x', req)
     expect(set).toContain('HttpOnly')
     expect(set).toContain('Secure')
     expect(set).toContain('SameSite=Lax')
-    const clear = sessionClearCookie()
+    const clear = sessionClearCookie(req)
     expect(clear).toContain('Secure')
     expect(clear).toContain('Max-Age=0')
+  })
+
+  it('cookie tanpa Secure pada http LAN agar sesi admin tidak hilang', () => {
+    const req = new Request('http://192.168.1.10:11111/api/proses')
+    const set = sessionSetCookie('token-x', req)
+    expect(set).not.toContain('Secure')
+    expect(set).toContain('HttpOnly')
+    expect(set).toContain('SameSite=Lax')
+    expect(sessionClearCookie(req)).not.toContain('Secure')
+  })
+
+  it('tanpa request (default aman) tetap pasang Secure', () => {
+    expect(sessionSetCookie('token-x')).toContain('Secure')
+    expect(sessionClearCookie()).toContain('Secure')
   })
 })
