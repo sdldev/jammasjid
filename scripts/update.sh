@@ -79,10 +79,35 @@ fi
 
 cd "$APP_DIR"
 
+# ---------- kepemilikan repo ----------------------------------------------------
+# update.sh sering dipanggil via sudo → semua perintah git default berjalan
+# sebagai root, sehingga .git/objects, HEAD, index menjadi milik root dan
+# update BERIKUTNYA dari user biasa (updater web, SSH non-root) gagal:
+#   "insufficient permission for adding an object to repository database"
+# Solusi: SELALU jalankan git sebagai pemilik APP_DIR, dan perbaiki dulu
+# kepemilikan .git yang telanjur root.
+APP_OWNER="$(stat -c %U "$APP_DIR")"
+
+if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
+  if find .git ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
+    log "Ada file .git milik non-$APP_OWNER — memperbaiki kepemilikan..."
+    chown -R "$APP_OWNER":"$APP_OWNER" .git
+    ok ".git dikembalikan ke $APP_OWNER."
+  fi
+fi
+
+# Jalankan git sebagai pemilik repo bila kita root; selain itu apa adanya.
+git_as() {
+  if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
+    runuser -u "$APP_OWNER" -- git "$@"
+  else
+    git "$@"
+  fi
+}
+
 # ---------- Bun ---------------------------------------------------------------
 # Cari bun di lokasi umum milik root DAN pemilik APP_DIR (sudo bash -c tidak
 # mewarisi PATH user desktop, jadi /home/<user>/.bun/bin harus discan eksplisit).
-APP_OWNER="$(stat -c %U "$APP_DIR")"
 APP_OWNER_HOME="$(getent passwd "$APP_OWNER" | cut -d: -f6)"
 BUN_BIN=""
 for cand in /root/.bun/bin/bun "$HOME/.bun/bin/bun" \
@@ -112,7 +137,7 @@ if [[ $BACKUP -eq 1 ]]; then
   for f in db/database.json db/jadwal-sholat.json .env; do
     [[ -f "$f" ]] && cp -a "$f" "$BACKUP_DIR/"
   done
-  git rev-parse HEAD > "$BACKUP_DIR/git-rev.txt" 2>/dev/null || true
+  git_as rev-parse HEAD > "$BACKUP_DIR/git-rev.txt" 2>/dev/null || true
   # Rotasi: simpan 10 run terbaru
   ls -1dt "$BACKUP_ROOT"/*/ 2>/dev/null | tail -n +11 | xargs -r rm -rf --
   ok "Backup: $BACKUP_DIR"
@@ -140,7 +165,7 @@ is_data_file() {
   return 1
 }
 
-DIRTY="$(git status --porcelain)"
+DIRTY="$(git_as status --porcelain)"
 if [[ -n "$DIRTY" ]]; then
   log "Working tree kotor — membersihkan sebelum update..."
   CODE_DIRTY=()
@@ -157,16 +182,16 @@ if [[ -n "$DIRTY" ]]; then
     if [[ "$xy" =~ ^(UU|AA|DD|DU|UD|AU|UA)$ ]]; then
       if is_data_file "$p"; then
         [[ -f "$p" && $BACKUP -eq 1 ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
-      git checkout HEAD -- "$p" 2>/dev/null || git checkout --theirs -- "$p" 2>/dev/null || rm -f "$p"
-      git add "$p" 2>/dev/null || true
-      git commit -q -m "update.sh: selesaikan konflik data (ambil repo) $p" 2>/dev/null || true
+      git_as checkout HEAD -- "$p" 2>/dev/null || git_as checkout --theirs -- "$p" 2>/dev/null || rm -f "$p"
+      git_as add "$p" 2>/dev/null || true
+      git_as -c user.name=update.sh -c user.email=update@local commit -q -m "update.sh: selesaikan konflik data (ambil repo) $p" 2>/dev/null || true
       CLEANED_DATA+=("$p")
     else
       # Kode: simpan salinan konflik ke backup lalu ambil versi repo
       [[ -f "$p" && -n "$BACKUP_DIR" ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
-      git checkout HEAD -- "$p" 2>/dev/null || rm -f "$p"
-      git add "$p" 2>/dev/null || true
-      git commit -q -m "update.sh: selesaikan konflik kode (ambil repo) $p" 2>/dev/null || true
+      git_as checkout HEAD -- "$p" 2>/dev/null || rm -f "$p"
+      git_as add "$p" 2>/dev/null || true
+      git_as -c user.name=update.sh -c user.email=update@local commit -q -m "update.sh: selesaikan konflik kode (ambil repo) $p" 2>/dev/null || true
       warn "Konflik merge diselesaikan otomatis (versi repo): $p"
     fi
       continue
@@ -184,7 +209,7 @@ if [[ -n "$DIRTY" ]]; then
         mkdir -p "$BACKUP_DIR/$(dirname "$p")"
         cp -a "$p" "$BACKUP_DIR/$p"
       fi
-      git checkout -- "$p" 2>/dev/null || rm -f "$p"   # untracked data file: hapus (sudah tersalin)
+      git_as checkout -- "$p" 2>/dev/null || rm -f "$p"   # untracked data file: hapus (sudah tersalin)
       CLEANED_DATA+=("$p")
     else
       CODE_DIRTY+=("$p")
@@ -197,7 +222,7 @@ if [[ -n "$DIRTY" ]]; then
   if [[ ${#CODE_DIRTY[@]} -gt 0 ]]; then
     # -c identitas inline: stash tidak butuh konfigurasi git global (root
     # di STB biasanya belum punya user.name/email).
-    git -c user.name=update.sh -c user.email=update@local \
+    git_as -c user.name=update.sh -c user.email=update@local \
       stash push -m "update.sh $(date '+%Y-%m-%d %H:%M:%S'): ${CODE_DIRTY[*]}" \
       "${CODE_DIRTY[@]}"
     STASHED=1
@@ -207,12 +232,12 @@ if [[ -n "$DIRTY" ]]; then
 fi
 
 # ---------- rolling update dengan rollback ------------------------------------
-PREV_COMMIT="$(git rev-parse HEAD)"
+PREV_COMMIT="$(git_as rev-parse HEAD)"
 log "Commit sekarang: $PREV_COMMIT"
 log "Fetch branch $BRANCH..."
-git fetch origin "$BRANCH" --prune
-git checkout "$BRANCH"
-NEW_COMMIT="$(git rev-parse "origin/$BRANCH")"
+git_as fetch origin "$BRANCH" --prune
+git_as checkout "$BRANCH"
+NEW_COMMIT="$(git_as rev-parse "origin/$BRANCH")"
 
 # Pulihkan file data dari backup ke working tree (setelah reset --hard
 # melepas jejak mereka) — dipanggil baik di jalur sukses maupun rollback.
@@ -225,10 +250,20 @@ restore_data() {
   fi
 }
 
+# Jalankan bun install sebagai pemilik repo bila kita root — alasan sama
+# dengan git_as: node_modules milik root mematahkan update dari user biasa.
+bun_as() {
+  if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
+    runuser -u "$APP_OWNER" -- "$BUN_BIN" "$@"
+  else
+    "$BUN_BIN" "$@"
+  fi
+}
+
 rollback() {
   warn "Update gagal — mengembalikan ke $PREV_COMMIT"
-  git reset --hard "$PREV_COMMIT" || true
-  "$BUN_BIN" install --frozen-lockfile --production || true
+  git_as reset --hard "$PREV_COMMIT" || true
+  bun_as install --frozen-lockfile --production || true
   restore_data
   # Restart terbaik usaha: root bisa langsung, non-root coba tanpa jaminan.
   if [[ $EUID -eq 0 ]]; then
@@ -245,8 +280,8 @@ if [[ "$PREV_COMMIT" == "$NEW_COMMIT" ]]; then
 else
   log "Update $PREV_COMMIT → $NEW_COMMIT"
   trap rollback ERR
-  git reset --hard "$NEW_COMMIT"
-  "$BUN_BIN" install --frozen-lockfile --production
+  git_as reset --hard "$NEW_COMMIT"
+  bun_as install --frozen-lockfile --production
   trap 'die "Gagal pada baris $LINENO."' ERR
   restore_data
   ok "Kode & dependensi diperbarui."
