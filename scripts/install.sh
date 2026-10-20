@@ -332,7 +332,34 @@ printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > /etc/X11/Xwrapper.conf
 systemctl set-default multi-user.target
 systemctl disable lightdm.service 2>/dev/null || true
 systemctl enable masjid-x.service
-ok "Sesi X minimal terpasang (lightdm dinonaktifkan; rollback lihat komentar di install.sh)."
+
+# getty di tty1 BEREBUT VT dengan X (X dipasang di vt1) → layar kadang
+# menampilkan prompt login alih-alih jam. Matikan & mask; tty2 tetap
+# disiapkan untuk recovery darurat (Ctrl+Alt+F2).
+systemctl disable --now getty@tty1.service 2>/dev/null || true
+systemctl mask getty@tty1.service
+systemctl unmask getty@tty2.service 2>/dev/null || true
+systemctl enable getty@tty2.service 2>/dev/null || true
+
+# Pastikan X menang saat boot walau getty tty1 sempat terjadwal
+mkdir -p /etc/systemd/system/masjid-x.service.d
+cat > /etc/systemd/system/masjid-x.service.d/10-tty1.conf <<'EOT'
+[Unit]
+After=getty@tty1.service
+Conflicts=getty@tty1.service
+EOT
+
+# Chromium harus menunggu X :0 benar-benar siap (bukan sekadar unit start)
+mkdir -p /etc/systemd/system/masjid-kiosk.service.d
+cat > /etc/systemd/system/masjid-kiosk.service.d/10-wait-x.conf <<'EOT'
+[Unit]
+After=masjid-x.service
+Requires=masjid-x.service
+
+[Service]
+ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do DISPLAY=:0 xdpyinfo >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
+EOT
+ok "Sesi X minimal terpasang (lightdm & getty tty1 nonaktif; rollback lihat komentar di install.sh)."
 
 cat > /etc/systemd/system/masjid-kiosk.service <<EOF
 [Unit]
