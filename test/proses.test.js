@@ -284,6 +284,67 @@ describe('proses API - updateSystem / updateStatus', () => {
   })
 })
 
+describe('proses API - tailscaleSetup', () => {
+  let env, cookie
+
+  beforeEach(async () => {
+    env = makeEnv()
+    cookie = await login(env)
+  })
+
+  it('ditolak di env tanpa LOCAL_UPDATE (Workers) → fail lokal-only', async () => {
+    const res = await handleProses(post({ id: 'tailscaleSetup', dt: { emails: 'a@gmail.com' } }, cookie), env)
+    const body = await res.json()
+    expect(body.success).toBe(false)
+    expect(body.data).toBe('Fitur Tailscale hanya tersedia pada mode lokal (STB)')
+  })
+
+  it('email tidak valid ditolak sebelum menyentuh shell', async () => {
+    env.LOCAL_UPDATE = true
+    const res = await handleProses(post({ id: 'tailscaleSetup', dt: { emails: 'bukan-email; rm -rf /' } }, cookie), env)
+    const body = await res.json()
+    expect(body.success).toBe(false)
+    expect(body.data).toMatch(/Email tidak valid/)
+  })
+
+  it('lebih dari 20 email ditolak', async () => {
+    env.LOCAL_UPDATE = true
+    const banyak = Array.from({ length: 21 }, (_, i) => `p${i}@gmail.com`).join(', ')
+    const res = await handleProses(post({ id: 'tailscaleSetup', dt: { emails: banyak } }, cookie), env)
+    const body = await res.json()
+    expect(body.success).toBe(false)
+    expect(body.data).toMatch(/Maksimal 20/)
+  })
+
+  it('tanpa login → registered:false', async () => {
+    const res = await handleProses(post({ id: 'tailscaleSetup', dt: { emails: 'a@gmail.com' } }), env)
+    expect((await res.json()).registered).toBe(false)
+  })
+})
+
+describe('proses API - Quick Tunnel', () => {
+  let env, cookie
+
+  beforeEach(async () => {
+    env = makeEnv()
+    cookie = await login(env)
+  })
+
+  for (const id of ['quickTunnelStart', 'quickTunnelStop', 'quickTunnelStatus']) {
+    it(`${id} di env tanpa LOCAL_UPDATE (Workers) → fail lokal-only`, async () => {
+      const res = await handleProses(post({ id }, cookie), env)
+      const body = await res.json()
+      expect(body.success).toBe(false)
+      expect(body.data).toBe('Quick Tunnel hanya tersedia pada mode lokal (STB)')
+    })
+
+    it(`${id} tanpa login → registered:false`, async () => {
+      const res = await handleProses(post({ id }), env)
+      expect((await res.json()).registered).toBe(false)
+    })
+  }
+})
+
 describe('proses API - Kas Masjid', () => {
   let env, cookie
 

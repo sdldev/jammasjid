@@ -342,8 +342,76 @@ async function handleLogoRemove(dt, env, origin) {
   }
 }
 
-// --- entrypoint -------------------------------------------------------------
+// Sinkronisasi email pengurus (admin tambahan) dari db ke ACL tailnet.
+// Hanya mode lokal — butuh node:child_process, jadi import DINAMIS seperti updater.
+const FAIL_TAILSCALE_LOCAL = 'Fitur Tailscale hanya tersedia pada mode lokal (STB)'
+async function handleTailscaleSetup(dt, env, origin) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_TAILSCALE_LOCAL)
+  // Validasi daftar email sebelum diteruskan ke shell.
+  const emails = String(dt?.emails || '')
+    .split(',')
+    .map((s) => s.trim().toLowerCase())
+    .filter(Boolean)
+  const EMAIL_RE = /^[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}$/
+  for (const e of emails) {
+    if (!EMAIL_RE.test(e) || e.length > 100) return fail('Email tidak valid: ' + e)
+  }
+  if (emails.length > 20) return fail('Maksimal 20 email pengurus')
 
+  try {
+    const { sinkronTailscaleAcl } = await import('../local/tailscaleSync.mjs')
+    const result = await sinkronTailscaleAcl(emails)
+    if (!result.ok) return fail(result.message)
+
+    // Tersimpan hanya kalau ACL berhasil diterapkan ke tailnet.
+    const db = await getDb(env)
+    db.tailscale = { ...(db.tailscale || {}), pengurus_emails: emails }
+    await putDb(env, db)
+    await notifyHub(env)
+    await invalidateDisplayCache(origin)
+    return ok({ applied: emails.length, ip: result.ip || '' })
+  } catch (err) {
+    return fail('Gagal sinkron Tailscale: ' + err.message)
+  }
+}
+
+// Cloudflare Quick Tunnel: ekspos display ke URL publik sementara
+// (https://*.trycloudflare.com). Lokal-only seperti updater — impor DINAMIS.
+const FAIL_TUNNEL_LOCAL = 'Quick Tunnel hanya tersedia pada mode lokal (STB)'
+async function handleQuickTunnelStart(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_TUNNEL_LOCAL)
+  try {
+    const { startTunnel } = await import('../local/quickTunnel.mjs')
+    const port = env.PORT || 11111
+    const r = startTunnel(port)
+    if (!r.ok) return fail(r.message)
+    return ok({ started: true, url: r.url || '' })
+  } catch (err) {
+    return fail('Gagal memulai tunnel: ' + err.message)
+  }
+}
+
+async function handleQuickTunnelStop(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_TUNNEL_LOCAL)
+  try {
+    const { stopTunnel } = await import('../local/quickTunnel.mjs')
+    return ok(stopTunnel())
+  } catch (err) {
+    return fail('Gagal menghentikan tunnel: ' + err.message)
+  }
+}
+
+async function handleQuickTunnelStatus(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_TUNNEL_LOCAL)
+  try {
+    const { tunnelStatus } = await import('../local/quickTunnel.mjs')
+    return ok(tunnelStatus())
+  } catch (err) {
+    return fail('Gagal membaca status tunnel: ' + err.message)
+  }
+}
+
+// --- entrypoint -------------------------------------------------------------
 const HANDLERS = {
   login: (body, env, _origin, request) => handleLogin(body, env, request),
   logout: (_body, _env, _origin, request) => handleLogout(request),
@@ -358,6 +426,10 @@ const HANDLERS = {
   logoRemove: (body, env, origin) => handleLogoRemove(body.dt || {}, env, origin),
   updateSystem: (_body, env) => handleUpdateSystem(env),
   updateStatus: (_body, env) => handleUpdateStatus(env),
+  tailscaleSetup: (body, env, origin) => handleTailscaleSetup(body.dt || {}, env, origin),
+  quickTunnelStart: (_body, env) => handleQuickTunnelStart(env),
+  quickTunnelStop: (_body, env) => handleQuickTunnelStop(env),
+  quickTunnelStatus: (_body, env) => handleQuickTunnelStatus(env),
   resetDevice: (body, env, origin, request) => handleResetDevice(body.dt, env, origin, request)
 }
 

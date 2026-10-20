@@ -34,6 +34,9 @@ APP_USER="${APP_USER:-}"          # user yang menjalankan kiosk (desktop login)
 KIOSK_DISPLAY="${KIOSK_DISPLAY:-:0}"
 SKIP_CLEANUP=0
 SKIP_UPGRADE=0
+SKIP_TAILSCALE=0
+SKIP_CLOUDFLARED=0
+TAILSCALE_OWNER="${TAILSCALE_OWNER:-satrimuhub@gmail.com}"
 PORT="${PORT:-11111}"
 
 # ---------- utilitas ---------------------------------------------------------
@@ -60,6 +63,9 @@ while [[ $# -gt 0 ]]; do
     --repo)        REPO_URL="${2:?--repo butuh nilai}"; shift 2 ;;
     --display)     KIOSK_DISPLAY="${2:?--display butuh nilai}"; shift 2 ;;
     --port)        PORT="${2:?--port butuh nilai}"; shift 2 ;;
+    --tailscale-email) TAILSCALE_OWNER="${2:?--tailscale-email butuh nilai}"; shift 2 ;;
+    --skip-tailscale) SKIP_TAILSCALE=1; shift ;;
+    --skip-cloudflared) SKIP_CLOUDFLARED=1; shift ;;
     --skip-cleanup) SKIP_CLEANUP=1; shift ;;
     --skip-upgrade) SKIP_UPGRADE=1; shift ;;
     -h|--help)     usage ;;
@@ -454,6 +460,58 @@ else
   warn "Sesi grafis belum aktif. Kiosk akan jalan otomatis saat login desktop."
 fi
 
+# ---------- 10. Tailscale (remote SSH + admin) ------------------------------
+TS_IP=""
+if [[ $SKIP_TAILSCALE -eq 1 ]]; then
+  warn "Tailscale dilewati (--skip-tailscale)."
+else
+  log "Memasang Tailscale (remote SSH untuk developer, admin web untuk pengurus)..."
+  if ! command -v tailscale >/dev/null 2>&1; then
+    curl -fsSL https://tailscale.com/install.sh | sh
+  fi
+  systemctl enable --now tailscaled
+  # --advertise-tags memerlukan tagOwners sudah berisi email pemilik;
+  # ACL awal diterapkan manual / dari panel admin setelah login.
+  if ! tailscale status >/dev/null 2>&1; then
+    log "Login Tailscale — buka URL berikut di browser ($TAILSCALE_OWNER):"
+    tailscale up --ssh || warn "tailscale up belum selesai — ulangi: sudo tailscale up --ssh"
+  else
+    tailscale up --ssh >/dev/null 2>&1 || true
+  fi
+  TS_IP="$(tailscale ip -4 2>/dev/null || true)"
+
+  # Catat pemilik tailnet ke .env (dipakai tailscaleSync.mjs saat membangun ACL)
+  if ! grep -q '^TAILSCALE_OWNER=' "$ENV_FILE"; then
+    printf 'TAILSCALE_OWNER=%s\n' "$TAILSCALE_OWNER" >> "$ENV_FILE"
+  fi
+  if [[ -n "$TS_IP" ]]; then
+    ok "Tailscale aktif: $TS_IP"
+  else
+    warn "Tailscale terpasang tapi belum login. Jalankan: sudo tailscale up --ssh"
+  fi
+fi
+
+# ---------- 10b. cloudflared (Quick Tunnel dari panel admin) ----------------
+if [[ $SKIP_CLOUDFLARED -eq 1 ]]; then
+  warn "cloudflared dilewati (--skip-cloudflared)."
+elif command -v cloudflared >/dev/null 2>&1; then
+  ok "cloudflared sudah terpasang: $(cloudflared --version 2>/dev/null | head -n1)"
+else
+  log "Memasang cloudflared (Quick Tunnel publik sementara dari admin panel)..."
+  CF_DEB_ARCH=""
+  case "$arch" in
+    aarch64|arm64) CF_DEB_ARCH="arm64" ;;
+    x86_64|amd64)  CF_DEB_ARCH="amd64" ;;
+  esac
+  CF_URL="https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-${CF_DEB_ARCH}"
+  if curl -fsSL -o /usr/local/bin/cloudflared "$CF_URL"; then
+    chmod +x /usr/local/bin/cloudflared
+    ok "cloudflared terpasang: $(/usr/local/bin/cloudflared --version 2>/dev/null | head -n1)"
+  else
+    warn "Gagal mengunduh cloudflared — Quick Tunnel nonaktif sampai dipasang manual."
+  fi
+fi
+
 # ---------- ringkasan --------------------------------------------------------
 cat <<EOF
 
@@ -479,3 +537,19 @@ Perintah berguna:
   sudo systemctl restart masjid-display         # restart server
   sudo systemctl restart masjid-kiosk           # restart browser kiosk
 EOF
+
+if [[ -n "$TS_IP" ]]; then
+  cat <<EOF
+
+Remote via Tailscale (pemilik tailnet: $TAILSCALE_OWNER):
+  STB IP    : $TS_IP
+  SSH       : ssh $APP_USER@$TS_IP        (hanya tag:dev)
+  Admin web : http://$TS_IP:$PORT/admin/  (tag:dev + tag:pengurus)
+
+  Wajib sekali di Admin Console (https://login.tailscale.com/admin/machines):
+    1. Disable key expiry untuk STB ini.
+    2. Set ACL — bisa lewat panel admin (menu Remote/Tailscale) atau
+       tempel db/tailscale-acl.json ke https://login.tailscale.com/admin/acls
+  Email pengurus (boleh lebih dari 1) diatur dari panel admin → Remote.
+EOF
+fi

@@ -45,6 +45,10 @@ export const DEFAULT_DB = {
   // provid/kabkotid = region hash IDs from the Kemenag site (picked in admin UI).
   kemenag: { active: false, provid: '', kabkotid: '', last_sync: '' },
   // Real clock offset (ms) measured from the Kemenag HTTP Date header, used by
+  // Tailscale remote access: daftar email pengurus (admin tambahan) yang boleh
+  // membuka /admin lewat tailnet. Disimpan di sini agar bisa dikelola dari
+  // panel admin; diterapkan ke ACL tailnet oleh scripts/tailscale-acl.sh.
+  tailscale: { pengurus_emails: [] },
   // RTC-less STB devices: the display shifts all clock reads by this amount.
   // 0 means the local clock is already accurate.
   time_offset_ms: 0,
