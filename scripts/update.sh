@@ -87,6 +87,7 @@ cd "$APP_DIR"
 # Solusi: SELALU jalankan git sebagai pemilik APP_DIR, dan perbaiki dulu
 # kepemilikan .git yang telanjur root.
 APP_OWNER="$(stat -c %U "$APP_DIR")"
+APP_OWNER_HOME="$(getent passwd "$APP_OWNER" | cut -d: -f6)"
 
 if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
   if find .git ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
@@ -97,9 +98,12 @@ if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
 fi
 
 # Jalankan git sebagai pemilik repo bila kita root; selain itu apa adanya.
+# HOME diwariskan eksplisit: `runuser -u` TIDAK mengatur HOME, sehingga git
+# membaca/menulis config & credential di /root dan (pada sebagian sistem)
+# menolak menulis objek — fallback-nya malah membuat objek milik root.
 git_as() {
   if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
-    runuser -u "$APP_OWNER" -- git "$@"
+    runuser -u "$APP_OWNER" -- env HOME="$APP_OWNER_HOME" git "$@"
   else
     git "$@"
   fi
@@ -108,7 +112,6 @@ git_as() {
 # ---------- Bun ---------------------------------------------------------------
 # Cari bun di lokasi umum milik root DAN pemilik APP_DIR (sudo bash -c tidak
 # mewarisi PATH user desktop, jadi /home/<user>/.bun/bin harus discan eksplisit).
-APP_OWNER_HOME="$(getent passwd "$APP_OWNER" | cut -d: -f6)"
 BUN_BIN=""
 for cand in /root/.bun/bin/bun "$HOME/.bun/bin/bun" \
             ${APP_OWNER_HOME:+$APP_OWNER_HOME/.bun/bin/bun} \
@@ -254,7 +257,7 @@ restore_data() {
 # dengan git_as: node_modules milik root mematahkan update dari user biasa.
 bun_as() {
   if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
-    runuser -u "$APP_OWNER" -- "$BUN_BIN" "$@"
+    runuser -u "$APP_OWNER" -- env HOME="$APP_OWNER_HOME" "$BUN_BIN" "$@"
   else
     "$BUN_BIN" "$@"
   fi
@@ -285,6 +288,15 @@ else
   trap 'die "Gagal pada baris $LINENO."' ERR
   restore_data
   ok "Kode & dependensi diperbarui."
+fi
+
+# Verifikasi akhir: tidak boleh ada file .git milik non-pemilik setelah update.
+# Bila ada (mis. git versi lama menulis sebelum git_as dipakai), sembuhkan.
+if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
+  if find .git ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
+    chown -R "$APP_OWNER":"$APP_OWNER" .git
+    ok ".git disembuhkan pasca-update (milik $APP_OWNER)."
+  fi
 fi
 
 # ---------- pastikan file runtime ada ------------------------------------------
