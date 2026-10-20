@@ -51,7 +51,9 @@ src/lib/
   scheduler.mjs          → sinkron harian jadwal resmi (start bila perlu + 04:30)
 src/templates/index.html → template display (placeholder __LAT__, __DB_JSON__, dst.)
 public/                  → aset statis: admin SPA, masjid (jquery/moment/PrayTimes), font, img
-db/database.json         → sumber data awal / storage mode lokal
+db/database.example.json  → template konfigurasi (di repo); db/database.json
+                            adalah data runtime lokal, dibuat server sendiri
+                            dari DEFAULT_DB bila belum ada — tidak di-commit
 deploy/masjid-display.service → unit systemd untuk autostart Linux/Armbian
 test/                    → vitest (pipeline sholat, khutbah, flip-digit, watchdog, kemenag, scheduler, jadwal-resmi)
 ```
@@ -83,14 +85,17 @@ bun run start             # http://localhost:11111
 
 - Display: `http://localhost:$PORT/` · Admin: `http://localhost:$PORT/admin/`.
 - **Login admin** memakai user `admin` dan password `ADMIN_PASS` dari `.env`.
-  Password **tidak disimpan di repo** (`db/database.json` → `akses.pass` kosong).
+  Password **tidak disimpan di repo** (`akses.pass` kosong; `db/database.json`
+  adalah data runtime lokal dan tidak di-commit).
 - **Login ditolak selama password masih `admin1234`** (default). Ganti dulu:
   - isi `ADMIN_PASS` di `.env` dengan password kuat (≥8 karakter), **atau**
   - setelah login dengan `ADMIN_PASS` yang sudah diganti, gunakan admin →
     *Ganti password*. Password baru disimpan di `db.akses.pass` dan mengalahkan
     nilai env. Password default `admin1234` tidak diizinkan.
 - `src/lib/*` adalah ES modules murni Web API (Request/Response) — identik di Workers dan Bun, sehingga seluruh logika ter-cover oleh vitest tanpa mock berat.
-- Mode Wrangler (untuk menguji binding CF lokal): `bun run seed` lalu `bun run dev`.
+- Mode Wrangler (untuk menguji binding CF lokal): salin `db/database.example.json`
+  ke `db/database.json` (atau biarkan server membuat sendiri), lalu `bun run seed`
+  dan `bun run dev`.
 
 ### Testing
 
@@ -132,6 +137,8 @@ Yang dilakukan `install.sh`:
 6. Clone/pull repo ke `/opt/jam-masjid`
 7. `bun install --frozen-lockfile --production`
 8. Buat `.env` berisi `AUTH_SECRET` acak + `ADMIN_PASS=admin1234`
+   (`db/database.json` tidak perlu dibuat — server memakai `DEFAULT_DB`
+   sampai konfigurasi pertama disimpan dari admin)
 9. Pasang & aktifkan `masjid-display.service` + `masjid-kiosk.service`
 10. Verifikasi HTTP sampai server benar-benar merespons
 
@@ -160,14 +167,14 @@ sudo bash /opt/jam-masjid/scripts/update.sh
 
 `update.sh` mengambil commit terbaru, `bun install`, lalu restart service.
 Bila update gagal, repo **di-rollback otomatis** ke commit sebelumnya
-termasuk memulihkan `db/` dan `.env` dari backup.
+termasuk memulihkan `.env` dari backup.
 
 Skrip ini aman dijalankan walau working tree kotor:
 
-- File **data/runtime** (`db/*`, `.env`, `public/img/logo-*`) yang berubah
-  saat aplikasi berjalan otomatis dibackup lalu dibersihkan, dan
-  **dipulihkan kembali** setelah update (isi db lama tetap terbaca karena
-  `getDb` shallow-merge dengan `DEFAULT_DB`).
+- **`db/` adalah data runtime yang tidak di-track git**, jadi update tidak
+  pernah menyinggungnya — konfigurasi masjid, jadwal Kemenag, dan offset
+  waktu selalu tetap utuh (file hilang pun dibuat ulang otomatis dari
+  `DEFAULT_DB`).
 - Modifikasi **file kode** di STB otomatis di-`git stash` dengan pesan
   ber-timestamp — tidak hilang; pulihkan dengan `git stash pop`.
 
@@ -338,13 +345,17 @@ Batasan jujur: offset hanya akurat **sejak sinkron terakhir**. Jika STB mati-lis
 ```sh
 bunx wrangler secret put AUTH_SECRET     # sekali
 bunx wrangler secret put ADMIN_PASS      # password admin awal (jangan admin1234)
-bun run seed -- --remote                 # isi KV remote dari db/database.json
+bun run seed -- --remote                 # isi KV remote dari db/database.json (buat dulu dari database.example.json bila belum ada)
 bun run deploy
 ```
 
 Pastikan `kv_namespaces.id` di `wrangler.jsonc` menunjuk KV namespace Anda (`bunx wrangler kv namespace create DATABASE`). Catatan: sinkron Kemenag otomatis hanya berjalan di mode lokal (scheduler in-process); di Workers, gunakan `syncKemenag` manual dari admin atau jadwalkan via cron trigger bila diperlukan.
 
 ## Struktur database (`db/database.json` / KV key `database`)
+
+Dokumen ini adalah **data runtime**: di repo hanya ada template
+`db/database.example.json`. Mode lokal menyimpannya sebagai
+`db/database.json` (dibuat otomatis dari `DEFAULT_DB` bila belum ada).
 
 | Field | Isi |
 |---|---|
