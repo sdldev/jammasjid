@@ -115,7 +115,22 @@ if [[ $SKIP_CLEANUP -eq 0 ]]; then
     libreoffice-core libreoffice-common libreoffice-writer libreoffice-calc
     libreoffice-impress thunderbird hexchat transmission-gtk
     gnome-mines gnome-sudoku gnome-mahjongg aisleriot
+    # Engine browser kedua + pembaca PDF — kiosk hanya pakai Chromium
+    libwebkit2gtk-4.0-37 libjavascriptcoregtk-4.0-18 libjs-mathjax atril
+    # Toolchain kompilasi — tidak dipakai di runtime
+    gcc gcc-7 g++ g++-7 cpp-7 libc6-dev libstdc++-7-dev binutils-aarch64-linux-gnu
+    # Vim besar — vi.tiny tetap ada untuk edit darurat
+    vim-runtime
+    # Ikon tema & data aplikasi desktop yang tidak dipakai
+    humanity-icon-theme gnome-icon-theme
+    # VPN & share Windows tidak dipakai
+    openvpn
   )
+  # CATATAN (jangan masukkan ke daftar di atas):
+  #  - libgl1-mesa-dri / xserver-xorg*  → menarik X server & gvfs; dibutuhkan
+  #    kiosk dan automount USB (instalasi/boot awal STB dari USB/microSD).
+  #  - gvfs / udisks2 / samba-libs     → dibutuhkan untuk baca-tulis USB.
+  #  - iso-codes / poppler-data        → dependensi paket lain; biarkan.
   terpasang=()
   for p in "${PAKET_BERAT[@]}"; do
     dpkg -s "$p" >/dev/null 2>&1 && terpasang+=("$p")
@@ -134,7 +149,12 @@ fi
 
 # ---------- 2b. Matikan service & applet yang tidak dipakai display ---------
 # Aman diulang (idempoten). WiFi (NetworkManager/wpa_supplicant) TIDAK disentuh.
-SERVIS_MATI=(apache2 cups cups-browsed bluetooth avahi-daemon unattended-upgrades)
+SERVIS_MATI=(apache2 cups cups-browsed bluetooth avahi-daemon unattended-upgrades
+  ubuntu-advantage ua-reboot-cmds sysstat rsync)
+# Dibiarkan aktif dengan sengaja:
+#  - udisks2        → automount USB (STB kadang boot/update lewat USB/microSD)
+#  - getty@tty1     → terminal fisik darurat untuk recovery
+#  - fake-hwclock/ntp/timesyncd → STB tanpa RTC butuh sinkronisasi jam
 for s in "${SERVIS_MATI[@]}"; do
   if systemctl list-unit-files "$s.service" >/dev/null 2>&1; then
     systemctl disable --now "$s.service" >/dev/null 2>&1 \
