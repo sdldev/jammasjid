@@ -342,6 +342,26 @@ systemctl set-default multi-user.target
 systemctl disable lightdm.service 2>/dev/null || true
 systemctl enable masjid-x.service
 
+# Purge XFCE + lightdm: sesi X minimal di atas sudah menggantikannya.
+# Catatan: setelah purge, rollback ke XFCE memerlukan instal ulang paket
+#   (apt-get install xfce4 lightdm && systemctl enable lightdm &&
+#    systemctl set-default graphical.target && reboot)
+# Lewati purge dengan: SKIP_XFCE_PURGE=1 bash scripts/install.sh
+if [[ "${SKIP_XFCE_PURGE:-0}" != "1" ]]; then
+  xfce_terpasang=()
+  for p in $(dpkg-query -W -f='${Package}\n' 2>/dev/null | grep -E '^(xfce4|xfwm4|xfdesktop4|thunar|lightdm|mousepad|ristretto|parole|xfce4-.*|lightdm-.*)' || true); do
+    xfce_terpasang+=("$p")
+  done
+  if [[ ${#xfce_terpasang[@]} -gt 0 ]]; then
+    log "Purge XFCE/lightdm (${#xfce_terpasang[@]} paket, ±150 MB)..."
+    apt-get -y purge "${xfce_terpasang[@]}" || warn "Sebagian paket XFCE gagal dihapus (lanjut)."
+    apt-get -y autoremove --purge || true
+    ok "XFCE/lightdm dihapus. Sesi grafis sepenuhnya milik masjid-x."
+  else
+    ok "XFCE/lightdm tidak terpasang."
+  fi
+fi
+
 # getty di tty1 BEREBUT VT dengan X (X dipasang di vt1) → layar kadang
 # menampilkan prompt login alih-alih jam. Matikan & mask; tty2 tetap
 # disiapkan untuk recovery darurat (Ctrl+Alt+F2).
