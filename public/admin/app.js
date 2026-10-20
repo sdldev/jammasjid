@@ -897,6 +897,29 @@ var app = {
       '<p class="field-note">Memuat status Quick Tunnel...</p></div></div>'
     ).appendTo($c())
 
+    var pollingQt = null
+    function stopPollingQt() {
+      if (pollingQt) { clearInterval(pollingQt); pollingQt = null }
+    }
+
+    function salinUrl(url, $btn) {
+      function sukses() {
+        $btn.text('Tersalin!')
+        setTimeout(function () { $btn.text('Salin link') }, 1500)
+      }
+      function fallback() {
+        // HTTP (non-HTTPS) tidak punya clipboard API — pakai cara lama.
+        var $tmp = $('<textarea>').val(url).css({ position: 'fixed', opacity: 0 }).appendTo('body')
+        $tmp[0].select()
+        try { document.execCommand('copy') ? sukses() : app.toast('danger', 'Gagal menyalin — salin manual') }
+        catch (e) { app.toast('danger', 'Gagal menyalin — salin manual') }
+        $tmp.remove()
+      }
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(sukses, fallback)
+      } else fallback()
+    }
+
     function renderTunnel(st) {
       var aktif = st && st.running
       var html =
@@ -905,12 +928,17 @@ var app = {
         'https://*.trycloudflare.com — tanpa login Tailscale. URL berubah tiap kali ' +
         'dinyalakan dan mati otomatis saat server restart.</p>'
       if (aktif && st.url) {
+        stopPollingQt()
         html += '<div class="field"><label>URL publik aktif</label>' +
-          '<input class="input" readonly value="' + st.url + '" onclick="this.select()"></div>' +
+          '<div style="display:flex;gap:8px">' +
+          '<input class="input" id="qt-url" readonly value="' + st.url + '" style="flex:1">' +
+          '<button class="btn btn-primary" id="btn-qt-copy" type="button" style="white-space:nowrap">Salin link</button>' +
+          '</div></div>' +
           '<p class="field-note">Bagikan URL ini ke siapa pun yang perlu melihat display. ' +
           '<b>Halaman admin tetap butuh password</b> — jangan bagikan password.</p>'
       } else if (aktif) {
-        html += '<p class="field-note">Tunnel menyala, menunggu URL publik... (muat ulang halaman ini)</p>'
+        html += '<p class="field-note" id="qt-waiting">Tunnel menyala, menunggu URL publik dari Cloudflare…</p>' +
+          '<p class="field-note"><span class="qt-dots">⏳</span> biasanya 5–15 detik, halaman ini tidak perlu dimuat ulang.</p>'
       }
       if (st && st.error) {
         html += '<p class="field-note" style="color:#b91c1c">Error: ' + st.error + '</p>'
@@ -923,25 +951,61 @@ var app = {
         (aktif ? 'Matikan akses publik' : 'Aktifkan akses publik') + '</button>'
       $card.find('#qt-body').html(html)
 
+      $('#btn-qt-copy').on('click', function () {
+        salinUrl($('#qt-url').val(), $(this))
+      })
+
       $('#btn-qt').on('click', function () {
-        var $btn = $(this).prop('disabled', true).text('Memproses...')
+        var $btn = $(this).prop('disabled', true).text(aktif ? 'Mematikan...' : 'Mengaktifkan...')
         app.api(aktif ? 'quickTunnelStop' : 'quickTunnelStart').done(function (res) {
           if (!res.success) {
             app.toast('danger', res.data)
             $btn.prop('disabled', false).text(aktif ? 'Matikan akses publik' : 'Aktifkan akses publik')
             return
           }
-          app.toast('success', aktif ? 'Akses publik dimatikan' : 'Tunnel dimulai — menunggu URL...')
-          // URL muncul beberapa detik setelah start; poll status.
-          setTimeout(muatStatus, 2500)
+          if (aktif) {
+            stopPollingQt()
+            app.toast('success', 'Akses publik dimatikan')
+            muatStatus()
+          } else {
+            app.toast('success', 'Tunnel dimulai — URL akan muncul otomatis di sini')
+            // Langsung tampilkan status "menunggu", lalu poll tiap 2 detik
+            // sampai URL keluar (atau tunnel mati). Maks 60 detik.
+            renderTunnel({ running: true, url: '' })
+            stopPollingQt()
+            var n = 0
+            pollingQt = setInterval(function () {
+              if (++n > 30) { stopPollingQt(); return }
+              app.api('quickTunnelStatus').done(function (r) {
+                if (!r.success) return
+                var d = r.data || {}
+                if (d.url || !d.running) { renderTunnel(d) }
+              })
+            }, 2000)
+          }
         })
       })
     }
 
     function muatStatus() {
       app.api('quickTunnelStatus').done(function (res) {
-        if (res.success) renderTunnel(res.data)
-        else $card.find('#qt-body').html('<p class="field-note">' + res.data + '</p>')
+        if (res.success) {
+          renderTunnel(res.data)
+          // Halaman dibuka saat tunnel menyala tapi URL belum keluar → ikut polling.
+          if (res.data && res.data.running && !res.data.url && !pollingQt) {
+            var n = 0
+            pollingQt = setInterval(function () {
+              if (++n > 30) { stopPollingQt(); return }
+              app.api('quickTunnelStatus').done(function (r) {
+                if (!r.success) return
+                var d = r.data || {}
+                if (d.url || !d.running) renderTunnel(d)
+              })
+            }, 2000)
+          }
+        } else {
+          $card.find('#qt-body').html('<p class="field-note">' + res.data + '</p>')
+        }
       })
     }
     muatStatus()
