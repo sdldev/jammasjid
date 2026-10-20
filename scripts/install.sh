@@ -244,6 +244,8 @@ ExecStart=$CHROME_BIN \\
   --force-device-scale-factor=1 \\
   --start-fullscreen \\
   --window-position=0,0 \\
+  --log-level=3 \\
+  --disable-gpu \\
   --disable-pinch \\
   --autoplay-policy=no-user-gesture-required \\
   --disable-features=Translate,TranslateUI \\
