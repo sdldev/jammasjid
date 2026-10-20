@@ -1,7 +1,7 @@
 import struct
 from PIL import Image
 
-im = Image.open('/tmp/splash-preview2.png').convert('RGB')
+im = Image.open('/tmp/splash-santrimu.png').convert('RGB')
 w, h = im.size
 assert (w, h) == (1920, 1080)
 px = im.load()
@@ -27,5 +27,5 @@ for y in range(h):
         buf[base + x*2] = v & 0xFF
         buf[base + x*2 + 1] = (v >> 8) & 0xFF
 out += buf
-open('/tmp/splash-santrimu.bmp', 'wb').write(bytes(out))
+open('/tmp/splash-santrimu.bmp565', 'wb').write(bytes(out))
 print("BMP:", len(out), "bytes (asli Google:", 4147272, ")")
