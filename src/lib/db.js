@@ -53,8 +53,10 @@ export const DEFAULT_DB = {
   jadwal_resmi: {},
   // Logo opsional kiri/kanan judul nama masjid: URL final (dengan ?v= cache-bust).
   // Kosong = sisi itu tanpa logo. Key baru top-level → shallow-merge DEFAULT_DB
-  // otomatis menyediakannya untuk db lama.
-  logo: { left: '', right: '' },
+  // otomatis menyediakannya untuk db lama. `position` menentukan penempatan:
+  // 'beside_name' (default, kiri/kanan nama masjid) atau 'above_clock'
+  // (satu logo di atas jam; kiri diprioritaskan, kanan jika kiri kosong).
+  logo: { left: '', right: '', position: 'beside_name' },
   kas: { active: true, rekening: '', kas_bulan_lalu: 0, pendapatan: 0, pengeluaran: 0 },
   running_text: [
     'Selamat datang di aplikasi Display-Masjid',

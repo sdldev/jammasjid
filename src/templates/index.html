@@ -12,7 +12,7 @@
     <link rel="icon" type="image/png" href="/img/bg-pattern-01.webp">
     <link rel="manifest" href="/manifest.json">
     <!-- ?v= cache-busting: asset di-cache browser 30 hari; naikkan versi saat deploy perubahan CSS/JS -->
-    <link href="/masjid/style.css?v=3" rel="stylesheet">
+    <link href="/masjid/style.css?v=6" rel="stylesheet">
 	<style>
 		
 	</style>
@@ -73,6 +73,9 @@
 				</div>
 			</div>
 			<div id="clock">
+				<!-- Logo tunggal di atas jam (mode position:'above_clock');
+				     src/visibilitas diatur oleh showLogo(). -->
+				<img id="logo-top" alt="" style="display:none">
 				<div id="jam" class="skel">&nbsp;</div>
 				<div id="tgl" class="skel">&nbsp;</div>
 				<!-- Connection/clock warning right below the big clock + date:
@@ -218,11 +221,31 @@ prayTimes.tune(prayTimesTune);
 			now	: function(){
 				return app.timeOffsetMs ? moment(Date.now() + app.timeOffsetMs) : moment();
 			},
-				// Logo opsional kiri/kanan judul: tampilkan img sesuai db.logo.left/right.
+				// Logo opsional: penempatan diatur db.logo.position —
+				//   'beside_name' (default, termasuk nilai tak dikenal/db lama):
+				//     logo kiri/kanan di samping nama masjid.
+				//   'above_clock': SATU logo di atas jam — kiri diprioritaskan,
+				//     jika kosong pakai kanan; tanpa gambar tidak ada yang tampil.
 				// Dipanggil sekali saat boot — perubahan logo selanjutnya datang lewat
 				// SSE db-changed → reload halaman, jadi tidak perlu dicek per-detik.
 				showLogo	: function(){
 					var logo	= app.db.logo || {};
+					var above	= logo.position === 'above_clock';
+					if(above){
+						// Mode atas jam: hanya satu logo (kiri > kanan).
+						var url	= String(logo.left || logo.right || '').trim();
+						if(url){
+							$('#logo-top').attr('src', url).show();
+						} else {
+							$('#logo-top').removeAttr('src').hide();
+						}
+						// pastikan mode samping nama tidak ikut tampil
+						$('#logo-left').removeAttr('src').hide();
+						$('#logo-right').removeAttr('src').hide();
+						return;
+					}
+					// Mode samping nama (default).
+					$('#logo-top').removeAttr('src').hide();
 					$.each({ left: '#logo-left', right: '#logo-right' }, function(side, sel){
 						var url	= String(logo[side] || '').trim();
 						if(url){

@@ -4,6 +4,8 @@
   "name": "jam-masjid-santrimu",
   "main": "src/worker.js",
   "compatibility_date": "2026-08-01",
+  // Untuk node:fs/node:path yang di-bundle dari jadwalStore.js & logoStore.js
+  "compatibility_flags": ["nodejs_compat"],
   "assets": {
     "directory": "./public",
     // All requests go through the Worker first so cache headers can be set;

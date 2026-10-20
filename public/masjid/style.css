@@ -477,9 +477,9 @@ h1,h2,h3,h4,h5{
 	padding:0 4vw;
 }
 #logo-row img{
-	height:6vw;			/* proporsional teks: ±0,6× tinggi huruf nama masjid */
+	height:10vw;		/* seukuran font nama masjid (10vw) */
 	width:auto;
-	max-width:15vw;
+	max-width:18vw;
 	object-fit:contain;	/* aman untuk logo landscape maupun persegi */
 	flex:0 0 auto;
 }
@@ -489,10 +489,22 @@ h1,h2,h3,h4,h5{
 	font-size:10vw;
 	line-height:1.2;
 	color:var(--color-white);
-	text-shadow: 0 0.15vw 0.5vw rgba(0,0,0,0.5);
+	text-shadow:0 0.15vw 0.5vw rgba(0,0,0,0.5);
 	padding:0.5vw 0 0;
 	flex:0 1 auto;		/* nama bisa menyusut bila logo lebar */
 	min-width:0;
+}
+
+/* Logo tunggal di atas jam (mode db.logo.position:'above_clock').
+   Dimensi jam sangat besar (±17vw) sehingga ada ruang lega di atasnya —
+   logo bisa jauh lebih besar daripada mode samping nama. */
+#logo-top{
+	display:block;		/* .show() jQuery; rata tengah via margin */
+	height:12vw;
+	width:auto;
+	max-width:25vw;
+	object-fit:contain;
+	margin:0 auto 0.5vw;
 }
 
 /* ============== Running text: CSS animation replacing <marquee> ============== */
@@ -584,7 +596,8 @@ h1,h2,h3,h4,h5{
 		margin-top: auto;
 		margin-bottom: auto;
 	}
-	#main > #logo-row img{ height: 6vw; }
+	#main > #logo-row img{ height: 9vw; }
+	#logo-top{ height: 14vw; }
 
 	/* ===== Columns: clock (hero) first, schedule below =====
 	   gap ~22vw menyamakan jeda antar-seksi dengan margin auto (±3 bagian),

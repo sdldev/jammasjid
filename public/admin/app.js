@@ -135,7 +135,8 @@ var app = {
     var ada = []
     if (String(logo.left || '').trim()) ada.push('kiri')
     if (String(logo.right || '').trim()) ada.push('kanan')
-    return ada.length ? ada.join(' + ') : 'belum ada logo'
+    var posisi = logo.position === 'above_clock' ? 'atas jam' : 'samping nama'
+    return (ada.length ? ada.join(' + ') : 'belum ada logo') + ' · ' + posisi
   },
 
   ICONS: {
@@ -339,7 +340,36 @@ var app = {
         '</div>'
     }
 
-    $c().html(sideBlock('left', 'Logo kiri') + sideBlock('right', 'Logo kanan'))
+    // Kartu posisi logo — mode tampilan di display.
+    // 'beside_name' = default (termasuk db lama yang belum punya key position).
+    var position = logo.position === 'above_clock' ? 'above_clock' : 'beside_name'
+    var positionCard =
+      '<div class="card">' +
+      '<div class="field"><label>Posisi logo</label>' +
+      '<div class="segmented" id="seg-logo-pos">' +
+      '<button type="button" data-v="beside_name"' + (position === 'beside_name' ? ' class="active"' : '') + '>Di samping nama masjid</button>' +
+      '<button type="button" data-v="above_clock"' + (position === 'above_clock' ? ' class="active"' : '') + '>Di atas jam</button>' +
+      '</div>' +
+      '<p class="field-note">"Di atas jam" hanya menampilkan SATU logo — logo kiri diprioritaskan, atau logo kanan jika kiri kosong. Tanpa logo terunggah, tidak ada yang tampil.</p>' +
+      '</div>' +
+      '<button class="btn btn-primary btn-block" id="save-logo-pos">Simpan posisi</button>' +
+      '</div>'
+
+    $c().html(positionCard + sideBlock('left', 'Logo kiri') + sideBlock('right', 'Logo kanan'))
+
+    $('#seg-logo-pos button').on('click', function () {
+      $('#seg-logo-pos button').removeClass('active')
+      $(this).addClass('active')
+    })
+    $('#save-logo-pos').on('click', function () {
+      app.api('formSave', {
+        formId: 'logo', index: 'no-index',
+        position: $('#seg-logo-pos button.active').data('v')
+      }).done(function (res) {
+        if (res.success) { app.toast('success', 'Posisi logo tersimpan'); app.refresh() }
+        else app.toast('danger', res.data)
+      }).fail(function () { app.toast('danger', 'Gagal menghubungi server') })
+    })
 
     function bindSide(side) {
       var uploading = false
