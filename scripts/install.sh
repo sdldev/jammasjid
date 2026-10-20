@@ -298,11 +298,20 @@ log "Memasang sesi X minimal (openbox)..."
 if ! command -v openbox >/dev/null 2>&1; then
   apt-get -y install openbox || warn "openbox gagal dipasang (lanjut; kiosk tetap bisa tanpa WM)."
 fi
+# unclutter menyembunyikan kursor mouse (mengganggu tampilan jam);
+# xdotool untuk memarkir kursor di pojok saat start
+apt-get -y install unclutter xdotool || warn "unclutter/xdotool gagal dipasang (kursor tetap terlihat)."
 mkdir -p /etc/jam-masjid
 cat > /etc/jam-masjid/xinitrc <<EOF
 #!/bin/sh
 # Sesi kiosk minimal: X (root) + openbox sebagai user kiosk.
-su - $APP_USER -c 'DISPLAY=$KIOSK_DISPLAY openbox' &
+# Kursor: diparkir di pojok kanan bawah lalu disembunyikan unclutter
+# setelah 0,5 dtk diam — tidak mengganggu tampilan jam.
+su - $APP_USER -c 'DISPLAY=$KIOSK_DISPLAY sh -c "
+  xdotool mousemove 1919 1079 2>/dev/null
+  unclutter -idle 0.5 -root &
+  openbox
+"' &
 exec sh -c 'while true; do sleep 3600; done'
 EOF
 chmod 755 /etc/jam-masjid/xinitrc
