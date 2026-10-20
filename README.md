@@ -188,7 +188,8 @@ journalctl -u masjid-display -f
 Perintah lengkap yang direkomendasikan untuk STB/kiosk:
 
 ```sh
-chromium --kiosk --disable-pinch \
+chromium --kiosk --force-device-scale-factor=1 --start-fullscreen \
+  --window-position=0,0 --log-level=3 --disable-gpu --disable-pinch \
   --autoplay-policy=no-user-gesture-required \
   --disable-features=Translate,TranslateUI \
   --lang=id-ID --accept-lang=id-ID,id \
@@ -201,11 +202,36 @@ chromium --kiosk --disable-pinch \
 Autostart via systemd: gunakan `deploy/masjid-kiosk.service` (sudah berisi flag
 yang sama, plus `ExecStartPre` menunggu server siap).
 
+#### Sesi grafis minimal (xinit + openbox)
+
+STB display tidak membutuhkan desktop environment. `install.sh` memasang
+**xinit + openbox** menggantikan lightdm/XFCE:
+
+- `masjid-x.service` (root) menjalankan X di `:0`/vt1 + openbox sebagai user kiosk.
+- `masjid-kiosk.service` menunggu X siap (`Requires=masjid-x` + cek `xdpyinfo`).
+- `getty@tty1` di-mask (X memakai vt1); **tty2 tetap aktif** untuk recovery
+  (Ctrl+Alt+F2 di keyboard).
+- Kursor disembunyikan: `unclutter` (hilang setelah 0,5 dtk diam) + parkir pojok
+  via `xdotool`. Bergerakkan mouse memunculkannya kembali.
+- Boot default: `multi-user.target` (bukan graphical). lightdm dinonaktifkan.
+
+Rollback ke desktop penuh (selama paket xfce4/lightdm belum di-purge):
+
+```sh
+sudo systemctl disable masjid-x masjid-kiosk
+sudo systemctl enable lightdm
+sudo systemctl set-default graphical.target && sudo reboot
+```
+
 #### Penjelasan setiap flag
 
 | Flag | Kenapa perlu |
 |---|---|
 | `--kiosk` | Layar penuh tanpa UI browser (tab bar, address bar, tombol tutup). |
+| `--force-device-scale-factor=1` | Kunci skala di 100% — mencegah tampilan "kadang tidak fullscreen" saat TV/HDMI bernegosiasi ulang. |
+| `--start-fullscreen --window-position=0,0` | Pastikan jendela menutupi layar dari koordinat awal. |
+| `--disable-gpu` | STB Amlogic tanpa dri3: GPU process gagal terus-menerus. Software render (SwiftShader) lebih stabil; halaman jam adalah teks ringan. |
+| `--log-level=3` | Hanya fatal error ke journal — redam noise UPower/D-Bus. |
 | `--disable-pinch` | Nonaktifkan zoom pinch pada layar sentuh. |
 | `--autoplay-policy=no-user-gesture-required` | **Wajib.** Beep adzan/iqomah berbunyi tanpa sentuhan pengguna. Tanpa flag ini browser memblokir audio otomatis. |
 | `--disable-features=Translate,TranslateUI` | **Mematikan notifikasi "Terjemahkan halaman ini?"**. Halaman ber-`lang="id"`; tanpa flag ini Chrome menawarkan terjemahan bila locale browser berbeda. |
