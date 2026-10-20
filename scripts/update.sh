@@ -157,18 +157,18 @@ if [[ -n "$DIRTY" ]]; then
     if [[ "$xy" =~ ^(UU|AA|DD|DU|UD|AU|UA)$ ]]; then
       if is_data_file "$p"; then
         [[ -f "$p" && $BACKUP -eq 1 ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
-        git checkout HEAD -- "$p" 2>/dev/null || git checkout --theirs -- "$p" 2>/dev/null || rm -f "$p"
-        git add "$p" 2>/dev/null || true
-        git reset -q "$p" 2>/dev/null || true
-        CLEANED_DATA+=("$p")
-      else
-        # Kode: simpan salinan konflik ke backup lalu ambil versi repo
-        [[ -f "$p" && -n "$BACKUP_DIR" ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
-        git checkout HEAD -- "$p" 2>/dev/null || rm -f "$p"
-        git add "$p" 2>/dev/null || true
-        git reset -q "$p" 2>/dev/null || true
-        warn "Konflik merge diselesaikan otomatis (versi repo): $p"
-      fi
+      git checkout HEAD -- "$p" 2>/dev/null || git checkout --theirs -- "$p" 2>/dev/null || rm -f "$p"
+      git add "$p" 2>/dev/null || true
+      git commit -q -m "update.sh: selesaikan konflik data (ambil repo) $p" 2>/dev/null || true
+      CLEANED_DATA+=("$p")
+    else
+      # Kode: simpan salinan konflik ke backup lalu ambil versi repo
+      [[ -f "$p" && -n "$BACKUP_DIR" ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
+      git checkout HEAD -- "$p" 2>/dev/null || rm -f "$p"
+      git add "$p" 2>/dev/null || true
+      git commit -q -m "update.sh: selesaikan konflik kode (ambil repo) $p" 2>/dev/null || true
+      warn "Konflik merge diselesaikan otomatis (versi repo): $p"
+    fi
       continue
     fi
     if [[ "$xy" == "??" ]]; then
