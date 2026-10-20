@@ -252,6 +252,38 @@ describe('proses API - body form-urlencoded', () => {
   })
 })
 
+describe('proses API - updateSystem / updateStatus', () => {
+  let env, cookie
+
+  beforeEach(async () => {
+    env = makeEnv()
+    cookie = await login(env)
+  })
+
+  it('updateSystem di env tanpa LOCAL_UPDATE (Workers) → fail lokal-only', async () => {
+    const res = await handleProses(post({ id: 'updateSystem' }, cookie), env)
+    const body = await res.json()
+    expect(body.success).toBe(false)
+    expect(body.data).toBe('Fitur update hanya tersedia pada mode lokal (STB)')
+  })
+
+  it('updateStatus di env tanpa LOCAL_UPDATE → fail lokal-only', async () => {
+    const res = await handleProses(post({ id: 'updateStatus' }, cookie), env)
+    const body = await res.json()
+    expect(body.success).toBe(false)
+    expect(body.data).toBe('Fitur update hanya tersedia pada mode lokal (STB)')
+  })
+
+  it('updateStatus di env lokal mengembalikan status (tanpa menjalankan skrip)', async () => {
+    env.LOCAL_UPDATE = true
+    const res = await handleProses(post({ id: 'updateStatus' }, cookie), env)
+    const body = await res.json()
+    expect(body.success).toBe(true)
+    expect(body.data).toHaveProperty('running')
+    expect(body.data).toHaveProperty('log')
+  })
+})
+
 describe('proses API - Kas Masjid', () => {
   let env, cookie
 

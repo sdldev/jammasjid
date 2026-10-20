@@ -156,6 +156,30 @@ function applyGantiPass(dt, db, env) {
   return { db: db, formId: 'akses', index: 'pass', value: dt.password_baru }
 }
 
+// Updater hanya ada di mode lokal (Bun/STB) — memuat node:child_process,
+// sehingga import harus DINAMIS agar bundle Workers tetap bersih.
+const FAIL_ONLY_LOCAL = 'Fitur update hanya tersedia pada mode lokal (STB)'
+async function handleUpdateSystem(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_ONLY_LOCAL)
+  try {
+    const { runUpdate } = await import('../local/updater.mjs')
+    runUpdate()
+    return ok({ started: true })
+  } catch (err) {
+    return fail(err.message)
+  }
+}
+
+async function handleUpdateStatus(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_ONLY_LOCAL)
+  try {
+    const { readUpdateStatus } = await import('../local/updater.mjs')
+    return ok(readUpdateStatus())
+  } catch (err) {
+    return fail(err.message)
+  }
+}
+
 async function handleFormSave(dt, env, origin) {
   const db = await getDb(env)
   let formId = dt.formId
@@ -332,6 +356,8 @@ const HANDLERS = {
   kemenagKabkota: (body) => handleKemenagKabkota(body.dt || {}),
   kemenagProvinsi: () => handleKemenagProvinsi(),
   logoRemove: (body, env, origin) => handleLogoRemove(body.dt || {}, env, origin),
+  updateSystem: (_body, env) => handleUpdateSystem(env),
+  updateStatus: (_body, env) => handleUpdateStatus(env),
   resetDevice: (body, env, origin, request) => handleResetDevice(body.dt, env, origin, request)
 }
 

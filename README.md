@@ -184,6 +184,11 @@ Catatan: unit systemd yang sudah terpasang **tidak ditimpa** otomatis; bila
 template di `deploy/` berubah, skrip memberi peringatan agar Anda membandingkan
 manual.
 
+Update juga bisa dijalankan dari dashboard admin: **Lainnya → Update sistem →
+Perbarui sekarang** (hanya mode lokal/STB; memerlukan login admin). Tampilannya
+mem-poll log `update.sh` real-time; server me-restart otomatis setelah selesai
+— halaman admin perlu dimuat ulang.
+
 ### Instalasi manual (alternatif)
 
 ```sh

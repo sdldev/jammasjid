@@ -13,6 +13,7 @@ export const DB_FILE = join(ROOT, 'db', 'database.json')
 // Prayer-schedule store: a single file db/jadwal-sholat.json (not per-year dirs)
 export const JADWAL_DIR = join(ROOT, 'db')
 // Logo store: files in public/img (served by serveStatic)
+export const APP_ROOT = ROOT
 export const LOGO_IMG_DIR = join(ROOT, 'public', 'img')
 export const ENV_FILE = join(ROOT, '.env')
 
@@ -90,6 +91,9 @@ export function createLocalEnv() {
     JADWAL_STORE: createFileJadwalStore(JADWAL_DIR),
     LOGO_STORE: createFileLogoStore(LOGO_IMG_DIR),
     HUB: hub,
+    // Marker mode lokal untuk updater (updateSystem/updateStatus di proses.js).
+    LOCAL_UPDATE: true,
+    APP_ROOT: ROOT,
     PORT: Number(process.env.PORT) || 11111
   }
 }

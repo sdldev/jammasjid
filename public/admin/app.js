@@ -151,7 +151,8 @@ var app = {
     calc: '<rect x="4" y="2" width="16" height="20" rx="2"/><path d="M8 6h8M8 11h.01M12 11h.01M16 11h.01M8 15h.01M12 15h.01M16 15h.01M8 19h.01M12 19h.01M16 19h.01"/>',
     wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1"/>',
     cloud: '<path d="M17.5 19a4.5 4.5 0 0 0 .9-8.9 6 6 0 0 0-11.7 1.7A4 4 0 0 0 6 19h11.5z"/><path d="M12 12v6"/><path d="M9 15l3-3 3 3"/>',
-    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>'
+    image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
+    update: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'
   },
 
   // Kemenag sync status summary for the menu subtitle
@@ -258,6 +259,7 @@ var app = {
       '</div>' +
       '<div class="group-label">Lainnya</div><div class="group-card">' +
       row('password', I.lock, '', 'Ganti password', '') +
+      row('update', I.update, '', 'Update sistem', 'perbarui ke versi terbaru') +
       '<div class="row-link" id="row-reset">' +
       app.icon(I.reset, 'red') +
       '<span class="row-text"><span class="row-title">Reset pengaturan</span></span>' +
@@ -841,6 +843,79 @@ var app = {
       }).done(function (res) {
         if (res.success) { app.toast('success', 'Password diganti'); app.refresh() }
         else app.toast('danger', res.data)
+      })
+    })
+  }
+
+  // ------------------------------------------------ update sistem (lokal saja)
+  // Meluncurkan scripts/update.sh di server lokal (STB) dan mem-poll log-nya.
+  // Di Workers: server menolak dengan pesan lokal-only → halaman menampilkan
+  // keterangan tersebut.
+  app.pages['update'] = function () {
+    setHeader('Update sistem', true)
+    $c().html(
+      '<div class="card">' +
+      '<div class="field"><label>Perbarui kode aplikasi</label>' +
+      '<p class="field-note">' +
+      'Mengambil versi terbaru dari repositori, memasang dependensi, lalu ' +
+      'merestart service. Backup db/.env dibuat otomatis. ' +
+      '<strong>Jalankan di luar jam sholat</strong> — display akan memuat ulang.' +
+      '</p></div>' +
+      '<button class="btn btn-primary btn-block" id="btn-update">Perbarui sekarang</button>' +
+      '<pre id="update-log" class="input" style="display:none;white-space:pre-wrap;height:220px;overflow:auto;margin-top:12px;font-size:12px"></pre>' +
+      '<p class="field-note" id="update-done" style="display:none;margin-top:8px">' +
+      'Update selesai. Server me-restart — muat ulang halaman ini.</p>' +
+      '</div>'
+    )
+
+    var polling = null
+    function renderLog() {
+      app.api('updateStatus').done(function (res) {
+        if (!res.success) return
+        var d = res.data || {}
+        if (d.log) {
+          var $log = $('#update-log').show()
+          $log.text(d.log)
+          $log.scrollTop($log.prop('scrollHeight'))
+        }
+        if (d.running === false && d.exitCode !== null) {
+          clearInterval(polling)
+          polling = null
+          $('#update-done').show()
+        }
+      }).fail(function () {
+        // Server sedang restart → log tidak terjangkau; anggap selesai
+        if (polling) {
+          clearInterval(polling)
+          polling = null
+          $('#update-done').show()
+        }
+      })
+    }
+
+    $('#btn-update').on('click', function () {
+      var $btn = $(this)
+      if (!$btn.data('confirm')) {
+        $btn.data('confirm', true).text('Ketuk lagi untuk konfirmasi (luar jam sholat)')
+        setTimeout(function () {
+          $btn.data('confirm', false).text('Perbarui sekarang')
+        }, 4000)
+        return
+      }
+      $btn.prop('disabled', true).text('Memulai update...')
+      app.api('updateSystem').done(function (res) {
+        if (!res.success) {
+          app.toast('danger', res.data || 'Gagal memulai update')
+          $btn.prop('disabled', false).text('Perbarui sekarang')
+          return
+        }
+        $btn.text('Update berjalan...')
+        $('#update-log').show()
+        polling = setInterval(renderLog, 2000)
+        renderLog()
+      }).fail(function () {
+        app.toast('danger', 'Gagal menghubungi server')
+        $btn.prop('disabled', false).text('Perbarui sekarang')
       })
     })
   }
