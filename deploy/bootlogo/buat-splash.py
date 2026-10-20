@@ -61,7 +61,7 @@ y0 = ly + logo_big.height + 30
 d.rectangle([(W-240)//2, y0, (W+240)//2, y0+3], fill=GOLD)
 center("Praying Times", ImageFont.truetype(F_SKETSA, 118), y0+30, WHITE)
 center("by", ImageFont.truetype(F_FIRA_R, 32), y0+172, MUTE)
-center("SANTRIMU", ImageFont.truetype(F_FIRA_B, 74), y0+218, GOLD, spacing=12)
+center("santrimu", ImageFont.truetype(F_FIRA_R, 64), y0+225, GOLD, spacing=10)
 
 img.convert('RGB').save(OUT)
 print("tersimpan:", OUT)
