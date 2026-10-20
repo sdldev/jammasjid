@@ -125,6 +125,8 @@ if [[ $SKIP_CLEANUP -eq 0 ]]; then
     humanity-icon-theme gnome-icon-theme
     # VPN & share Windows tidak dipakai
     openvpn
+    # Pemutar media mpv menarik libavdevice57→libavfilter6→libflite1 (~60 MB)
+    mpv libavdevice57
   )
   # CATATAN (jangan masukkan ke daftar di atas):
   #  - libgl1-mesa-dri / xserver-xorg*  → menarik X server & gvfs; dibutuhkan
