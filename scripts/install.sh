@@ -284,10 +284,60 @@ EOF
 
 # Path chromium terdeteksi
 CHROME_BIN="$(command -v chromium || command -v chromium-browser || echo /usr/bin/chromium)"
+
+# ---------- 8b. sesi X minimal (xinit + openbox), bukan lightdm/XFCE --------
+# Display manager penuh (lightdm+XFCE) menghabiskan ±150 MB RAM untuk tugas
+# yang sebenarnya cukup dilayani X + window manager ringan. Skema:
+#   masjid-x.service (root) → xinit → X :0 + openbox (user kiosk)
+#   masjid-kiosk.service    → Chromium menempel ke DISPLAY :0
+# ROLLBACK ke XFCE/lightdm:
+#   sudo systemctl disable masjid-x masjid-kiosk
+#   sudo systemctl enable lightdm
+#   sudo systemctl set-default graphical.target && sudo reboot
+log "Memasang sesi X minimal (openbox)..."
+if ! command -v openbox >/dev/null 2>&1; then
+  apt-get -y install openbox || warn "openbox gagal dipasang (lanjut; kiosk tetap bisa tanpa WM)."
+fi
+mkdir -p /etc/jam-masjid
+cat > /etc/jam-masjid/xinitrc <<EOF
+#!/bin/sh
+# Sesi kiosk minimal: X (root) + openbox sebagai user kiosk.
+su - $APP_USER -c 'DISPLAY=$KIOSK_DISPLAY openbox' &
+exec sh -c 'while true; do sleep 3600; done'
+EOF
+chmod 755 /etc/jam-masjid/xinitrc
+
+cat > /etc/systemd/system/masjid-x.service <<EOF
+[Unit]
+Description=Jam Masjid Santrimu - sesi X minimal (xinit + openbox)
+Conflicts=lightdm.service gdm.service sddm.service
+After=systemd-user-sessions.service
+
+[Service]
+Type=simple
+User=root
+ExecStart=/usr/bin/xinit /etc/jam-masjid/xinitrc -- $KIOSK_DISPLAY vt1 -nolisten tcp
+Restart=always
+RestartSec=5
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
+# Non-root X di beberapa Armbian ditolak membuka VT; izinkan lewat Xwrapper.
+# (X tetap dijalankan root oleh unit di atas, tapi ini menjaga skenario manual.)
+printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > /etc/X11/Xwrapper.config
+
+# Boot langsung ke sesi X minimal, bukan display manager
+systemctl set-default multi-user.target
+systemctl disable lightdm.service 2>/dev/null || true
+systemctl enable masjid-x.service
+ok "Sesi X minimal terpasang (lightdm dinonaktifkan; rollback lihat komentar di install.sh)."
+
 cat > /etc/systemd/system/masjid-kiosk.service <<EOF
 [Unit]
 Description=Jam Masjid Santrimu - Chromium kiosk
-After=masjid-display.service graphical.target
+After=masjid-display.service masjid-x.service
 Wants=masjid-display.service
 
 [Service]
@@ -318,7 +368,7 @@ Restart=always
 RestartSec=10
 
 [Install]
-WantedBy=graphical.target
+WantedBy=multi-user.target
 EOF
 
 systemctl daemon-reload
