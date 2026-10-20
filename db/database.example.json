@@ -1,0 +1,28 @@
+{
+  "akses": { "user": "admin", "pass": "" },
+  "setting": {
+    "nama": "Masjid Al-Ikhlas",
+    "lokasi": "Bekasi",
+    "latitude": "-6.14",
+    "longitude": "106.59",
+    "timeZone": "7",
+    "dst": "0"
+  },
+  "prayTimesMethod": "0",
+  "prayTimesAdjust": { "fajr": 20, "dhuhr": "", "asr": "Standard", "maghrib": "", "isha": 18 },
+  "prayTimesTune": { "fajr": 0, "dhuhr": 0, "asr": 0, "maghrib": 0, "isha": 0 },
+  "prayName": { "fajr": "Subuh", "sunrise": "shuruq", "dhuhr": "Dzuhur", "asr": "Ashar", "maghrib": "Maghrib", "isha": "Isya'" },
+  "timeName": { "Hours": "Jam", "Minutes": "Menit", "Seconds": "Detik" },
+  "dayName": { "Sunday": "Ahad", "Monday": "Senin", "Tuesday": "Selasa", "Wednesday": "Rabu", "Thursday": "Kamis", "Friday": "Jum'at", "Saturday": "Sabtu" },
+  "monthName": {
+    "January": "Januari", "February": "Februari", "March": "Maret", "April": "April",
+    "May": "Mei", "June": "Juni", "July": "Juli", "August": "Agustus",
+    "September": "September", "October": "Oktober", "November": "November", "December": "Desember"
+  },
+  "timer": { "wait_adzan": "1", "adzan": "3" },
+  "iqomah": { "fajr": 15, "dhuhr": 15, "asr": 15, "maghrib": 15, "isha": 15 },
+  "kemenag": { "active": "0", "provid": "", "kabkotid": "", "last_sync": "" },
+  "time_offset_ms": 0,
+  "logo": { "left": "", "right": "" },
+  "running_text": []
+}

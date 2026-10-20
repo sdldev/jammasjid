@@ -1,6 +1,11 @@
 node_modules/
 # Lockfile npm jangan di-commit: bun.lock adalah sumber kebenaran
 package-lock.json
+# Data runtime (ditulis aplikasi saat berjalan) — jangan pernah di-commit.
+# db/database.example.json adalah template; server membuat db/database.json
+# sendiri dari DEFAULT_DB bila file belum ada.
+/db/*.json
+!/db/database.example.json
 .wrangler/
 .dev.vars
 .env

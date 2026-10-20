@@ -9,17 +9,16 @@
 #   sudo bash scripts/update.sh --no-backup      # lewati backup (tidak disarankan)
 #
 # Robust terhadap:
-#   - Working tree kotor. File yang ditulis aplikasi saat runtime
-#     (db/, .env, public/img/logo-*) otomatis dibackup lalu dibersihkan.
-#     Modifikasi file kode lain otomatis di-stash (bisa dipulihkan:
-#     git stash list di APP_DIR).
+#   - Working tree kotor. Modifikasi file kode yang diedit langsung di STB
+#     otomatis di-stash (bisa dipulihkan: git stash list di APP_DIR).
+#     db/*.json adalah data runtime yang TIDAK di-track git, jadi update
+#     tidak pernah menyinggungnya.
 #   - Bun di PATH user non-root (dicari juga di ~/.bun milik pemilik APP_DIR).
 #   - Gagal di tengah jalan → rollback ke commit sebelumnya + pulihkan
 #     file data dari backup + restart service.
 #
 # Aman: .env dan db/ tidak ditimpa oleh kode baru. Backup selalu dibuat
-# kecuali --no-backup, dirotasi (10 terbaru disimpan).
-# =============================================================================
+# kecuali --no-backup, dirotasi (10 terbaru disimpan).# =============================================================================
 set -Eeuo pipefail
 
 APP_DIR="${APP_DIR:-$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)}"
@@ -90,12 +89,11 @@ APP_OWNER="$(stat -c %U "$APP_DIR")"
 APP_OWNER_HOME="$(getent passwd "$APP_OWNER" | cut -d: -f6)"
 
 if [[ $EUID -eq 0 && "$APP_OWNER" != "root" ]]; then
-  # .git DAN working tree: file runtime (db/*.json ditulis server saat
-  # pernah jalan sebagai root) ikut mematahkan git reset sebagai pemilik.
-  if find .git db -maxdepth 2 ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q . \
-     || find . -maxdepth 2 -name "*.json" -path "./db/*" ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
+  # .git DAN db/: file runtime (db/*.json ditulis server saat pernah jalan
+  # sebagai root) ikut mematahkan git reset sebagai pemilik.
+  if find .git db -maxdepth 2 ! -user "$APP_OWNER" -print -quit 2>/dev/null | grep -q .; then
     log "Ada file milik non-$APP_OWNER — memperbaiki kepemilikan (.git + db)..."
-    chown -R "$APP_OWNER":"$APP_OWNER" .git db 2>/dev/null || chown -R "$APP_OWNER":"$APP_OWNER" .git
+    chown -R "$APP_OWNER":"$APP_OWNER" .git db
     ok "Kepemilikan dikembalikan ke $APP_OWNER."
   fi
 fi
@@ -134,7 +132,6 @@ else
 fi
 BACKUP_DIR=""
 STASHED=0
-CLEANED_DATA=()
 
 if [[ $BACKUP -eq 1 ]]; then
   ts="$(date +%Y%m%d-%H%M%S)"
@@ -152,24 +149,12 @@ else
 fi
 
 # ---------- tangani working tree kotor ----------------------------------------
-# Dua kategori:
-#   1) File data/runtime yang memang berubah saat aplikasi jalan
-#      (db/*, .env, logo terupload): backup + bersihkan.
-#      getDb shallow-merge dengan DEFAULT_DB sehingga isi db lama tetap
-#      terbaca setelah update — file hanya perlu bersih agar pull lancar.
+# db/*.json tidak lagi di-track git (data runtime), jadi update tidak pernah
+# menyinggungnya — cukup .env dan file kode yang diedit langsung di STB.
+#   1) .env / logo terupload: file milik operator, biarkan apa adanya.
 #   2) File kode yang diedit langsung di STB: git stash (dipulihkan manual
 #      bila perlu: git stash list / git stash pop).
-DATA_PATHS=('db/*' '.env' 'public/img/logo-*')
-is_data_file() {
-  local p="$1"
-  for pat in "${DATA_PATHS[@]}"; do
-    # shellcheck disable=SC2254
-    case "$p" in
-      $pat) return 0 ;;
-    esac
-  done
-  return 1
-}
+STASHED=0
 
 DIRTY="$(git_as status --porcelain)"
 if [[ -n "$DIRTY" ]]; then
@@ -177,54 +162,24 @@ if [[ -n "$DIRTY" ]]; then
   CODE_DIRTY=()
   while IFS= read -r line; do
     # format porcelain: XY <path>; path dengan spasi di-quote git ("a b")
-    # XY '??' = untracked → bukan konflik pull; lewati (jangan dihapus/stash)
-    #   — hanya db/ runtime yang dibersihkan dengan rm -f saat untracked.
     xy="${line:0:2}"
     p="${line:3}"
     [[ "$p" == \"*\" ]] && p="${p:1:${#p}-2}"
     [[ -z "$p" ]] && continue
-    # Konflik merge (UU/AA/DD dsb): ambil versi repo saat ini, versi lokal
-    # tersimpan di backup (data) atau stash (kode).
+    # Untracked ('??') tidak mengganggu pull — lewati (termasuk data runtime).
+    [[ "$xy" == "??" ]] && continue
+    # Konflik merge (UU/AA/DD dsb): ambil versi repo, salinan lokal ke backup.
     if [[ "$xy" =~ ^(UU|AA|DD|DU|UD|AU|UA)$ ]]; then
-      if is_data_file "$p"; then
-        [[ -f "$p" && $BACKUP -eq 1 ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
+      [[ -f "$p" && -n "$BACKUP_DIR" ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
       git_as checkout HEAD -- "$p" 2>/dev/null || git_as checkout --theirs -- "$p" 2>/dev/null || rm -f "$p"
       git_as add "$p" 2>/dev/null || true
-      git_as -c user.name=update.sh -c user.email=update@local commit -q -m "update.sh: selesaikan konflik data (ambil repo) $p" 2>/dev/null || true
-      CLEANED_DATA+=("$p")
-    else
-      # Kode: simpan salinan konflik ke backup lalu ambil versi repo
-      [[ -f "$p" && -n "$BACKUP_DIR" ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
-      git_as checkout HEAD -- "$p" 2>/dev/null || rm -f "$p"
-      git_as add "$p" 2>/dev/null || true
-      git_as -c user.name=update.sh -c user.email=update@local commit -q -m "update.sh: selesaikan konflik kode (ambil repo) $p" 2>/dev/null || true
+      git_as -c user.name=update.sh -c user.email=update@local commit -q -m "update.sh: selesaikan konflik (ambil repo) $p" 2>/dev/null || true
       warn "Konflik merge diselesaikan otomatis (versi repo): $p"
-    fi
       continue
     fi
-    if [[ "$xy" == "??" ]]; then
-      if is_data_file "$p"; then
-        [[ -f "$p" && $BACKUP -eq 1 ]] && { mkdir -p "$BACKUP_DIR/$(dirname "$p")"; cp -a "$p" "$BACKUP_DIR/$p"; }
-        rm -f "$p"
-        CLEANED_DATA+=("$p")
-      fi
-      continue
-    fi
-    if is_data_file "$p"; then
-      if [[ $BACKUP -eq 1 && -f "$p" ]]; then
-        mkdir -p "$BACKUP_DIR/$(dirname "$p")"
-        cp -a "$p" "$BACKUP_DIR/$p"
-      fi
-      git_as checkout -- "$p" 2>/dev/null || rm -f "$p"   # untracked data file: hapus (sudah tersalin)
-      CLEANED_DATA+=("$p")
-    else
-      CODE_DIRTY+=("$p")
-    fi
+    CODE_DIRTY+=("$p")
   done <<< "$DIRTY"
 
-  if [[ ${#CLEANED_DATA[@]} -gt 0 ]]; then
-    ok "File data dibersihkan (tersalin ke backup): ${CLEANED_DATA[*]}"
-  fi
   if [[ ${#CODE_DIRTY[@]} -gt 0 ]]; then
     # -c identitas inline: stash tidak butuh konfigurasi git global (root
     # di STB biasanya belum punya user.name/email).
@@ -245,13 +200,10 @@ git_as fetch origin "$BRANCH" --prune
 git_as checkout "$BRANCH"
 NEW_COMMIT="$(git_as rev-parse "origin/$BRANCH")"
 
-# Pulihkan file data dari backup ke working tree (setelah reset --hard
-# melepas jejak mereka) — dipanggil baik di jalur sukses maupun rollback.
+# Pulihkan .env dari backup bila terhapus (db/ tidak pernah disentuh git).
+# Dipanggil baik di jalur sukses maupun rollback.
 restore_data() {
-  if [[ -n "$BACKUP_DIR" && -d "$BACKUP_DIR/db" ]]; then
-    cp -a "$BACKUP_DIR/db/." db/ 2>/dev/null || true
-  fi
-  if [[ -n "$BACKUP_DIR" && -f "$BACKUP_DIR/.env" ]]; then
+  if [[ -n "$BACKUP_DIR" && ! -f .env && -f "$BACKUP_DIR/.env" ]]; then
     cp -a "$BACKUP_DIR/.env" .env
   fi
 }
@@ -304,7 +256,7 @@ fi
 
 # ---------- pastikan file runtime ada ------------------------------------------
 [[ -f .env ]] || warn ".env tidak ada! Jalankan install.sh atau buat manual (AUTH_SECRET wajib)."
-[[ -f db/database.json ]] || warn "db/database.json tidak ada — aplikasi akan memakai DEFAULT_DB."
+[[ -f db/database.json ]] || ok "db/database.json tidak ada — aplikasi akan memakai DEFAULT_DB (normal untuk instalasi baru)."
 
 # ---------- sync unit systemd (kalau template berubah) -------------------------
 for unit in masjid-display masjid-kiosk; do
