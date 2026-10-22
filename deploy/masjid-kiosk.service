@@ -15,6 +15,9 @@
 #   --no-first-run --no-default-browser-check  cegah wizard & popup browser default
 #   --user-data-dir=...                  profil persisten agar cache 30 hari bekerja
 #                                        (JANGAN pakai --incognito: cache dibuang tiap start)
+#   ExecStartPre rm Singleton*           bersihkan lock usang (Chromium mati mendadak /
+#                                        profile pindahan) — cegah dialog "profile appears
+#                                        to be used by another Chromium process"
 #
 # Catatan: unit ini TIDAK memasang display manager. Di STB headless, jalankan
 # minimal X (xinit/openbox) atau Wayland compositor (cage/sway) lebih dulu.
@@ -23,7 +26,12 @@
 Description=Jam Masjid Santrimu - Chromium kiosk
 After=masjid-display.service graphical.target
 Wants=masjid-display.service
-# Tunggu server lokal siap sebelum membuka browser
+# Tunggu server lokal siap sebelum membuka browser.
+# ExecStartPre rm: bersihkan singleton lock usang (sisa Chromium yang mati
+# mendadak / profile pindahan) agar tidak muncul dialog
+# "profile appears to be used by another Chromium process (<host>-<pid>)".
+# Sesuaikan path --user-data-dir di bawah bila berbeda.
+ExecStartPre=/bin/rm -f /opt/jam-masjid/.chrome-kiosk/SingletonLock /opt/jam-masjid/.chrome-kiosk/SingletonCookie /opt/jam-masjid/.chrome-kiosk/SingletonSocket
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do curl -sf http://localhost:11111/ >/dev/null && exit 0; sleep 1; done; exit 1'
 
 [Service]

@@ -407,6 +407,10 @@ Type=simple
 User=$APP_USER
 Environment=DISPLAY=$KIOSK_DISPLAY
 Environment=XAUTHORITY=$APP_HOME/.Xauthority
+# Bersihkan singleton lock usang — sisa Chromium yang mati mendadak / profile
+# yang dipindah dari mesin lain membuat dialog "profile appears to be used by
+# another Chromium process (<host-pid>)" muncul setiap start kiosk.
+ExecStartPre=/bin/rm -f $APP_HOME/.config/jammasjid-kiosk/SingletonLock $APP_HOME/.config/jammasjid-kiosk/SingletonCookie $APP_HOME/.config/jammasjid-kiosk/SingletonSocket
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 40); do curl -sf http://localhost:$PORT/ >/dev/null && exit 0; sleep 1; done; exit 1'
 ExecStart=$CHROME_BIN \\
   --kiosk \\

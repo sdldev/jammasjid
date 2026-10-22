@@ -277,6 +277,9 @@ done
 # RESTART_DELAY > 0: dipakai updater web — subshell detached menunggu N detik
 # supaya proses server sempat mengirim respons HTTP sebelum dimatikan.
 do_restart() {
+  # Unit mungkin baru diperbarui (install/update) — hindari warning
+  # "unit file changed on disk" dengan reload definisi lebih dulu.
+  systemctl daemon-reload 2>/dev/null || true
   systemctl restart masjid-display.service
   if systemctl is-active --quiet masjid-kiosk.service; then
     systemctl restart masjid-kiosk.service || true
