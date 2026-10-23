@@ -309,7 +309,8 @@ if ! command -v openbox >/dev/null 2>&1; then
 fi
 # unclutter menyembunyikan kursor mouse (mengganggu tampilan jam);
 # xdotool untuk memarkir kursor di pojok saat start
-apt-get -y install unclutter xdotool || warn "unclutter/xdotool gagal dipasang (kursor tetap terlihat)."
+apt-get -y install unclutter xdotool x11-xserver-utils \
+  || warn "unclutter/xdotool/xset gagal dipasang (kursor & DPMS tidak terkelola)."
 mkdir -p /etc/jam-masjid
 cat > /etc/jam-masjid/xinitrc <<EOF
 #!/bin/sh
@@ -321,6 +322,17 @@ su - $APP_USER -c 'DISPLAY=$KIOSK_DISPLAY sh -c "
   unclutter -idle 0.5 -root &
   openbox
 "' &
+# Matikan screensaver + DPMS. Tanpa ini X mem-blank layar setelah 10 menit
+# (default server: timeout 600, DPMS Off 600) — TV tampak kehilangan sinyal.
+# Harus dijalankan sebagai root (pemilik sesi X), bukan user kiosk.
+# Loop penjaga: sebagian driver/Chromium bisa mengaktifkan ulang DPMS, jadi
+# setel ulang tiap menit — murah dan menjamin layar tidak pernah blank.
+(
+  while true; do
+    DISPLAY=$KIOSK_DISPLAY xset s off -dpms s noblank 2>/dev/null
+    sleep 60
+  done
+) &
 exec sh -c 'while true; do sleep 3600; done'
 EOF
 chmod 755 /etc/jam-masjid/xinitrc
