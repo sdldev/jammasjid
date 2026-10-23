@@ -322,6 +322,28 @@ exec sh -c 'while true; do sleep 3600; done'
 EOF
 chmod 755 /etc/jam-masjid/xinitrc
 
+# Paksa konektor HDMI menyala + mode 1080p setiap boot.
+# STB Amlogic S905 (kernel 5.1-aml) kadang menandai HDMI-1 "disconnected"
+# walau TV menyala — meson-drm fallback ke 1024x768 (layar tidak fullscreen).
+cat > /etc/jam-masjid/fix-resolution.sh <<'EOS'
+#!/bin/sh
+# Paksa konektor HDMI menyala + mode 1080p untuk kiosk Jam Masjid.
+# Dijalankan ExecStartPost masjid-x.service setelah X naik.
+CONNECTOR=/sys/class/drm/card0-HDMI-A-1
+for i in $(seq 1 20); do
+  [ -e "$CONNECTOR/status" ] && break
+  sleep 1
+done
+echo on > "$CONNECTOR/status" 2>/dev/null
+# Mode standar CVT untuk 1920x1080@60
+if command -v xrandr >/dev/null; then
+  DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --newmode 1920x1080_60.00 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null
+  DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --addmode HDMI-1 1920x1080_60.00 2>/dev/null
+  DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --output HDMI-1 --mode 1920x1080_60.00 2>/dev/null
+fi
+EOS
+chmod 755 /etc/jam-masjid/fix-resolution.sh
+
 cat > /etc/systemd/system/masjid-x.service <<EOF
 [Unit]
 Description=Jam Masjid Santrimu - sesi X minimal (xinit + openbox)
@@ -332,6 +354,8 @@ After=systemd-user-sessions.service
 Type=simple
 User=root
 ExecStart=/usr/bin/xinit /etc/jam-masjid/xinitrc -- $KIOSK_DISPLAY vt1 -nolisten tcp
+# Setelah X naik: paksa konektor HDMI on + 1080p (mencegah layar 1024x768).
+ExecStartPost=/etc/jam-masjid/fix-resolution.sh
 Restart=always
 RestartSec=5
 
