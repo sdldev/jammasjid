@@ -316,6 +316,27 @@ export function buatService(opts = {}) {
     return r.ok
   }
 
+  // Status dipanggil tiap 5 dtk oleh halaman admin. Ping (~27 ms + proses)
+  // dan `tailscale ip` tidak perlu diulang setiap kali — cache singkat 15 dtk
+  // mengurangi beban CPU STB tanpa membuat status terasa basi.
+  let cacheInternet = { nilai: false, sampai: 0 }
+  let cacheTailscale = { nilai: '', sampai: 0 }
+  const CACHE_MS = 15_000
+
+  async function internetTerakhir() {
+    if (now() < cacheInternet.sampai) return cacheInternet.nilai
+    const nilai = await tesInternet()
+    cacheInternet = { nilai, sampai: now() + CACHE_MS }
+    return nilai
+  }
+
+  async function tailscaleTerakhir() {
+    if (now() < cacheTailscale.sampai) return cacheTailscale.nilai
+    const nilai = await tailscaleIp()
+    cacheTailscale = { nilai, sampai: now() + CACHE_MS }
+    return nilai
+  }
+
   async function statusJaringan() {
     const dev = await nmcli(['-t', '-f', 'DEVICE,TYPE,STATE,CONNECTION', 'device', 'status'], 10_000)
     const daftar = dev.ok ? parseDevices(dev.stdout) : []
@@ -340,8 +361,8 @@ export function buatService(opts = {}) {
     const [ipWlan, ipEth, tsIp, internet] = await Promise.all([
       ipDevice(IFACE),
       ipDevice('eth0'),
-      tailscaleIp(),
-      tesInternet()
+      tailscaleTerakhir(),
+      internetTerakhir()
     ])
     const profilAktif = await profilAktifWifi()
     const trial = bacaState()
