@@ -328,39 +328,68 @@ chmod 755 /etc/jam-masjid/xinitrc
 # Paksa konektor HDMI menyala + mode 1080p setiap boot.
 # STB Amlogic S905 (kernel 5.1-aml) kadang menandai HDMI-1 "disconnected"
 # walau TV menyala — meson-drm fallback ke 1024x768 (layar tidak fullscreen).
+#
+# CATATAN: skrip ini HANYA mengatur mode layar. Resize jendela Chromium
+# ditangani fix-window.sh (dipanggil kiosk ExecStartPost) karena saat skrip
+# ini jalan, jendela kiosk belum ada.
 cat > /etc/jam-masjid/fix-resolution.sh <<'EOS'
 #!/bin/sh
 # Paksa konektor HDMI menyala + mode 1080p untuk kiosk Jam Masjid.
-# STB Amlogic S905 (kernel 5.1-aml) kadang menandai HDMI-1 "disconnected"
-# walau TV menyala → meson-drm fallback ke 1024x768 (layar tidak fullscreen).
 CONNECTOR=/sys/class/drm/card0-HDMI-A-1
 D=${KIOSK_DISPLAY:-:0}
 
-# Tunggu X benar-benar siap merespons klien, bukan sekadar unit aktif
+# Tunggu X benar-benar siap merespons klien, bukan sekadar unit aktif.
+# (xrandr bisa gagal walau socket X sudah ada; ulang sampai 30 dtk.)
+siap=0
 for i in $(seq 1 30); do
-  [ -e "$CONNECTOR/status" ] && DISPLAY=$D xrandr >/dev/null 2>&1 && break
+  if DISPLAY=$D xrandr >/dev/null 2>&1; then siap=1; break; fi
   sleep 1
 done
-echo on > "$CONNECTOR/status" 2>/dev/null
+[ "$siap" = "1" ] || { logger -t jam-masjid-resolution "X :0 tidak siap"; exit 0; }
+
+# Konektor Amlogic kadang tertandai disconnected walau TV menyala.
+echo on > "$CONNECTOR/status" 2>/dev/null || true
 sleep 1
 
 # Mode standar CVT untuk 1920x1080@60
-if command -v xrandr >/dev/null; then
-  DISPLAY=$D xrandr --newmode 1920x1080_60.00 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null
-  DISPLAY=$D xrandr --addmode HDMI-1 1920x1080_60.00 2>/dev/null
-  DISPLAY=$D xrandr --output HDMI-1 --mode 1920x1080_60.00 2>/dev/null
+if command -v xrandr >/dev/null 2>&1; then
+  DISPLAY=$D xrandr --newmode 1920x1080_60.00 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync >/dev/null 2>&1 || true
+  DISPLAY=$D xrandr --addmode HDMI-1 1920x1080_60.00 >/dev/null 2>&1 || true
+  DISPLAY=$D xrandr --output HDMI-1 --mode 1920x1080_60.00 >/dev/null 2>&1 || true
 fi
-# Resize jendela kiosk ke ukuran layar penuh (window manager X minimal
-# kadang membiarkan Chromium tetap kecil walau mode layar sudah benar).
-if command -v xdotool >/dev/null; then
-  for i in $(seq 1 10); do
-    WIN=$(DISPLAY=$D xdotool search --name "Jam Masjid" 2>/dev/null | head -1)
-    [ -n "$WIN" ] && DISPLAY=$D xdotool windowsize "$WIN" 1920 1080 2>/dev/null && break
-    sleep 2
-  done
-fi
+
+# Log sekali agar mudah didiagnosis setelah reboot.
+logger -t jam-masjid-resolution "mode: $(DISPLAY=$D xrandr 2>/dev/null | head -n1)" 2>/dev/null || true
+exit 0
 EOS
 chmod 755 /etc/jam-masjid/fix-resolution.sh
+
+# Resize jendela kiosk ke ukuran layar. Dijalankan kiosk ExecStartPost
+# (setelah Chromium benar-benar start), jadi di sini jendela sudah ada.
+# Ukuran diambil dari mode layar aktif — tidak hardcode 1080p.
+cat > /etc/jam-masjid/fix-window.sh <<'EOS'
+#!/bin/sh
+# Resize/parkir jendela kiosk sesuai resolusi layar aktif.
+D=${KIOSK_DISPLAY:-:0}
+command -v xdotool >/dev/null 2>&1 || exit 0
+
+for i in $(seq 1 20); do
+  WIN=$(DISPLAY=$D xdotool search --name "Jam Masjid" 2>/dev/null | head -n1)
+  [ -n "$WIN" ] && break
+  sleep 1
+done
+[ -n "$WIN" ] || exit 0
+
+GEOM=$(DISPLAY=$D xrandr 2>/dev/null | sed -n 's/.*current \([0-9][0-9]*\) x \([0-9][0-9]*\).*/\1 \2/p' | head -n1)
+W=${GEOM%% *}
+H=${GEOM##* }
+[ -n "$W" ] && [ -n "$H" ] || { W=1920; H=1080; }
+
+DISPLAY=$D xdotool windowmove "$WIN" 0 0 2>/dev/null || true
+DISPLAY=$D xdotool windowsize "$WIN" "$W" "$H" 2>/dev/null || true
+exit 0
+EOS
+chmod 755 /etc/jam-masjid/fix-window.sh
 
 cat > /etc/systemd/system/masjid-x.service <<EOF
 [Unit]
@@ -382,11 +411,20 @@ EOF
 # Unit resolusi terpisah (bukan ExecStartPost masjid-x): mengatur display X
 # dari ExecStartPost membuat xinit keluar — pakai oneshot yang berjalan
 # setelah masjid-x naik.
+#
+# URUTAN PENTING: kiosk WAJIB menunggu resolusi selesai. Tanpa
+# Before=masjid-kiosk.service, Chromium start saat layar masih 1024x768
+# (terbukti dari timestamp systemd: kiosk 21,9 dtk vs resolution selesai
+# 26,6 dtk) sehingga fullscreen bergantung pada resize belakangan.
 cat > /etc/systemd/system/masjid-resolution.service <<EOF
 [Unit]
 Description=Jam Masjid Santrimu - paksa resolusi HDMI 1080p
 After=masjid-x.service
 Requires=masjid-x.service
+Before=masjid-kiosk.service
+# Ikut berjalan ulang bila X restart (Restart=always) — tanpa ini layar bisa
+# kembali 1024x768 saat X crash dan hidup lagi.
+PartOf=masjid-x.service
 
 [Service]
 Type=oneshot
@@ -445,12 +483,14 @@ After=getty@tty1.service
 Conflicts=getty@tty1.service
 EOT
 
-# Chromium harus menunggu X :0 benar-benar siap (bukan sekadar unit start)
+# Chromium harus menunggu X :0 benar-benar siap DAN resolusi sudah 1080p.
+# After=masjid-resolution mencegah kiosk start saat layar masih 1024x768.
 mkdir -p /etc/systemd/system/masjid-kiosk.service.d
 cat > /etc/systemd/system/masjid-kiosk.service.d/10-wait-x.conf <<'EOT'
 [Unit]
-After=masjid-x.service
+After=masjid-x.service masjid-resolution.service
 Requires=masjid-x.service
+Wants=masjid-resolution.service
 
 [Service]
 ExecStartPre=/bin/sh -c 'for i in $(seq 1 30); do DISPLAY=:0 xdpyinfo >/dev/null 2>&1 && exit 0; sleep 1; done; exit 1'
@@ -473,6 +513,10 @@ Environment=XAUTHORITY=$APP_HOME/.Xauthority
 # another Chromium process (<host-pid>)" muncul setiap start kiosk.
 ExecStartPre=/bin/rm -f $APP_HOME/.config/jammasjid-kiosk/SingletonLock $APP_HOME/.config/jammasjid-kiosk/SingletonCookie $APP_HOME/.config/jammasjid-kiosk/SingletonSocket
 ExecStartPre=/bin/sh -c 'for i in \$(seq 1 40); do curl -sf http://localhost:$PORT/ >/dev/null && exit 0; sleep 1; done; exit 1'
+# Setelah Chromium benar-benar start: resize jendela ke resolusi layar aktif.
+# Kiosk sudah menunggu masjid-resolution (lihat drop-in 10-wait-x.conf), jadi
+# layar sudah 1080p saat jendela dibuat.
+ExecStartPost=/etc/jam-masjid/fix-window.sh
 ExecStart=$CHROME_BIN \\
   --kiosk \\
   --force-device-scale-factor=1 \\

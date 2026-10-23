@@ -59,6 +59,8 @@ ExecStart=/usr/bin/chromium \
   --no-default-browser-check \
   --user-data-dir=/opt/jam-masjid/.chrome-kiosk \
   http://localhost:11111/
+# Opsional: resize jendela ke resolusi layar aktif (iden bila skrip absen).
+ExecStartPost=-/etc/jam-masjid/fix-window.sh
 Restart=always
 RestartSec=10
 
