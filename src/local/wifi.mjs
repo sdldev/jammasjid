@@ -474,8 +474,10 @@ export function buatService(opts = {}) {
       if (r.ok) return r
       // NetworkManager lama (1.10/Armbian) memblokir `connection load` lewat
       // polkit. Jalan sempit: helper root yang hanya menerima keyfile wifi.
+      // WAJIB await: finally menghapus folder temp, jadi tanpa await file
+      // sudah hilang sebelum sudo sempat membacanya.
       if (/access denied|not authorized|insufficient/i.test(r.stderr)) {
-        return jalankan(execFileFn, 'sudo', ['-n', '/usr/local/bin/jam-masjid-wifi-load', file], 25_000)
+        return await jalankan(execFileFn, 'sudo', ['-n', '/usr/local/bin/jam-masjid-wifi-load', file], 25_000)
       }
       return r
     } finally {

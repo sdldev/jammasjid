@@ -304,6 +304,32 @@ describe('wifi - service', () => {
     expect(existsSync(stateFile)).toBe(false)
   })
 
+  it('sambungWifi fallback ke helper sudo saat nmcli load ditolak polkit', async () => {
+    const calls = []
+    const exec = (cmd, args, opts, cb) => {
+      calls.push({ cmd, args: [...args] })
+      if (cmd === 'nmcli' && args.includes('load')) {
+        return cb(Object.assign(new Error('access denied'), { code: 1 }), '', 'Error: failed to load connection: access denied.')
+      }
+      if (cmd === 'sudo') {
+        // File harus masih ada saat helper dipanggil (bug finally tanpa await).
+        const path = args[args.length - 1]
+        expect(existsSync(path)).toBe(true)
+        return cb(null, 'ok 11111111-2222-3333-4444-555555555555\n', '')
+      }
+      if (cmd === 'nmcli' && args.includes('show') && args.includes('--active')) return cb(null, '', '')
+      if (cmd === 'nmcli' && args[0] === '-t' && args.includes('connection') && args.includes('show')) return cb(null, '', '')
+      if (cmd === 'nmcli' && args[0] === '-t' && args.includes('device') && args.includes('status')) {
+        return cb(null, 'wlan0:wifi:disconnected:\n', '')
+      }
+      cb(null, '', '')
+    }
+    const svc = buatService({ execFileFn: exec, stateFile, now: () => 1000, setTimer: () => 1 })
+    const r = await svc.sambungWifi({ ssid: 'Kantor', password: 'rahasia123', sambung: false })
+    expect(r.ok).toBe(true)
+    expect(calls.some((c) => c.cmd === 'sudo' && c.args[1] === '/usr/local/bin/jam-masjid-wifi-load')).toBe(true)
+  })
+
   it('aksiProfil menolak UUID asing dan aksi tidak dikenal', async () => {
     const svc = buatService({ execFileFn: fakeNmcli(), stateFile, now: () => 1000 })
     expect((await svc.aksiProfil({ uuid: 'x', action: 'delete' })).ok).toBe(false)
