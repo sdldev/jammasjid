@@ -543,6 +543,9 @@ ExecStart=$CHROME_BIN \\
   --accept-lang=id-ID,id \\
   --disable-component-update \\
   --disable-notifications \\
+  --disable-screensaver \\
+  --disable-backgrounding-occluded-windows \\
+  --disable-renderer-backgrounding \\
   --no-first-run \\
   --no-default-browser-check \\
   --user-data-dir=$APP_HOME/.config/jammasjid-kiosk \\

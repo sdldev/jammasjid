@@ -12,6 +12,9 @@
 #   --lang / --accept-lang               browser berbahasa Indonesia → tak ada tawaran terjemahan
 #   --disable-component-update           hentikan balon "Chrome versi baru"
 #   --disable-notifications              cegah notifikasi sistem dari web
+#   --disable-screensaver                cegah Chromium memicu blank/DPMS
+#   --disable-backgrounding-occluded-windows / --disable-renderer-backgrounding
+#                                        jangan "tidurkan" tab kiosk saat tak difokus
 #   --no-first-run --no-default-browser-check  cegah wizard & popup browser default
 #   --user-data-dir=...                  profil persisten agar cache 30 hari bekerja
 #                                        (JANGAN pakai --incognito: cache dibuang tiap start)
@@ -55,6 +58,9 @@ ExecStart=/usr/bin/chromium \
   --accept-lang=id-ID,id \
   --disable-component-update \
   --disable-notifications \
+  --disable-screensaver \
+  --disable-backgrounding-occluded-windows \
+  --disable-renderer-backgrounding \
   --no-first-run \
   --no-default-browser-check \
   --user-data-dir=/opt/jam-masjid/.chrome-kiosk \
