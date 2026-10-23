@@ -350,9 +350,57 @@ textarea.input { height: auto; min-height: 72px; padding: 12px 14px; resize: ver
   border-radius: 999px;
   padding: 2px 8px;
 }
-.wifi-pass { margin-bottom: 10px; }
-.wifi-row .btn-row, .wifi-profile .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
-.wifi-row .btn, .wifi-profile .btn { width: auto; flex: 1 1 auto; }
+.wifi-profile .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.wifi-profile .btn { width: auto; flex: 1 1 auto; }
+
+/* Daftar jaringan: baris ringkas, form muncul saat diketuk */
+.wifi-list { margin-bottom: 4px; }
+.wifi-item {
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  margin-bottom: 8px;
+  overflow: hidden;
+  transition: border-color 0.15s, background 0.15s;
+}
+.wifi-item.is-active { background: var(--accent-soft); border-color: transparent; }
+.wifi-item.is-open { border-color: var(--accent); }
+.wifi-item-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  color: inherit;
+}
+.wifi-item-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.wifi-item-name {
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.wifi-item-meta { font-size: 12px; color: var(--muted); }
+.wifi-item-right { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; }
+.wifi-chevron {
+  color: var(--muted);
+  font-size: 20px;
+  line-height: 1;
+  transition: transform 0.15s;
+}
+.wifi-item.is-open .wifi-chevron { transform: rotate(90deg); }
+.wifi-item-form { padding: 0 14px 14px; }
+.wifi-item-form .field { margin-bottom: 10px; }
+.wifi-item-form .field .input { background: #fff; }
+.wifi-item-form .btn-row { display: flex; gap: 8px; }
+.wifi-item-form .btn { width: auto; flex: 1 1 auto; }
 .delete-btn {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: var(--danger-soft); color: var(--danger);

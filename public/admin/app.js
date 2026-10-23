@@ -190,6 +190,19 @@ var app = {
       .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
   }
 
+  // Tombol mata untuk input password (dipakai field() dan form WiFi).
+  function eyeToggleHtml() {
+    return '<button type="button" class="pass-eye" tabindex="-1" aria-label="Tampilkan password">' +
+      '<svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
+      '<svg class="eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">' +
+      '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>' +
+      '<line x1="1" y1="1" x2="23" y2="23"/></svg>' +
+      '</button>'
+  }
+
   function field(label, name, value, opts) {
     opts = opts || {}
     var input
@@ -207,16 +220,7 @@ var app = {
     }
     // Toggle mata: input type=password dibungkus agar bisa ditampilkan/disembunyikan.
     if (opts.type === 'password') {
-      input = '<div class="pass-wrap">' + input +
-        '<button type="button" class="pass-eye" tabindex="-1" aria-label="Tampilkan password">' +
-        '<svg class="eye-open" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
-        '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>' +
-        '<svg class="eye-closed" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
-        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display:none">' +
-        '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94"/><path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19"/>' +
-        '<line x1="1" y1="1" x2="23" y2="23"/></svg>' +
-        '</button></div>'
+      input = '<div class="pass-wrap">' + input + eyeToggleHtml() + '</div>'
     }
     return '<div class="field"><label>' + label + '</label>' + input + '</div>'
   }
@@ -1071,17 +1075,20 @@ var app = {
       '<div class="card" id="wifi-trial" style="display:none"></div>' +
       '<div class="card">' +
       '<div class="field"><label>WiFi di sekitar</label>' +
-      '<p class="field-note">Pilih jaringan lalu masukkan password. SSID tersembunyi bisa diisi manual di bawah.</p></div>' +
-      '<div id="wifi-scan"><p class="field-note">Memindai...</p></div>' +
+      '<p class="field-note">Ketuk nama jaringan untuk memasukkan password. ' +
+      'Jaringan tersembunyi bisa diisi manual di bawah.</p></div>' +
+      '<div id="wifi-scan" class="wifi-list"><p class="field-note">Memindai...</p></div>' +
       '<button class="btn btn-primary btn-block" id="btn-wifi-rescan" type="button">Pindai ulang</button>' +
       '</div>' +
       '<div class="card">' +
       '<div class="field"><label>SSID tersembunyi / manual</label>' +
-      field('Nama jaringan (SSID)', 'wifi_ssid_manual', '', { maxlength: 32, required: false }) +
-      field('Password', 'wifi_pass_manual', '', { type: 'password', maxlength: 63, required: false }) +
-      '<p class="field-note">Kosongkan password untuk jaringan terbuka. Perangkat akan mengingat jaringan ini.</p>' +
-      '<button class="btn btn-primary btn-block" id="btn-wifi-manual" type="button">Sambung</button>' +
-      '</div></div>' +
+      '<p class="field-note">Untuk jaringan yang tidak muncul di daftar.</p></div>' +
+      '<form id="f-wifi-manual">' +
+      field('Nama jaringan (SSID)', 'wifi_ssid_manual', '', { maxlength: 32, required: false, placeholder: 'Nama WiFi' }) +
+      field('Password', 'wifi_pass_manual', '', { type: 'password', maxlength: 63, required: false, placeholder: 'Kosongkan bila terbuka' }) +
+      '<button class="btn btn-primary btn-block" type="submit">Simpan &amp; sambung</button>' +
+      '</form>' +
+      '</div>' +
       '<div class="card">' +
       '<div class="field"><label>Profil tersimpan</label>' +
       '<p class="field-note">Profil dengan prioritas utama dipilih lebih dulu saat STB menyala.</p></div>' +
@@ -1193,28 +1200,61 @@ var app = {
         $box.html('<p class="field-note">Tidak ada jaringan ditemukan.</p>')
         return
       }
+      // Daftar ringkas: password TIDAK dirender untuk semua baris. Form baru
+      // muncul setelah salah satu SSID diketuk (dan hanya satu yang terbuka).
       $box.html(list.map(function (j, i) {
-        return '<div class="list-card wifi-row" data-i="' + i + '">' +
-          '<div class="list-card-head">' +
-          '<span class="list-card-title">' + esc(j.ssid) + (j.aktif ? ' · terpakai' : '') + '</span>' +
+        var status = j.aktif ? 'terhubung'
+          : (j.terbuka ? 'terbuka' : (j.keamanan || 'terkunci'))
+        return '<div class="wifi-item' + (j.aktif ? ' is-active' : '') + '" data-i="' + i + '">' +
+          '<button type="button" class="wifi-item-head">' +
+          '<span class="wifi-item-text">' +
+          '<span class="wifi-item-name">' + esc(j.ssid) + '</span>' +
+          '<span class="wifi-item-meta">' + esc(status) + '</span>' +
+          '</span>' +
+          '<span class="wifi-item-right">' +
           '<span class="wifi-signal">' + j.sinyal + '%</span>' +
-          '</div>' +
-          '<p class="field-note">' + (j.terbuka ? 'terbuka' : esc(j.keamanan || 'terkunci')) + '</p>' +
-          '<div class="wifi-pass" style="display:none">' +
-          '<input class="input" type="password" placeholder="Password WiFi" maxlength="63">' +
-          '</div>' +
-          '<div class="btn-row">' +
-          '<button class="btn btn-sm btn-primary btn-wifi-connect" type="button">Sambung</button>' +
+          '<span class="wifi-chevron">&#8250;</span>' +
+          '</span>' +
+          '</button>' +
+          '<div class="wifi-item-form" style="display:none">' +
+          (j.aktif
+            ? '<p class="field-note">Perangkat sudah terhubung ke jaringan ini.</p>'
+            : (j.terbuka
+              ? '<p class="field-note">Jaringan terbuka — tanpa password.</p>'
+              : '<div class="field"><label>Password</label>' +
+                '<div class="pass-wrap"><input class="input wifi-pass-input" type="password" ' +
+                'placeholder="Password WiFi" maxlength="63" autocomplete="new-password">' +
+                eyeToggleHtml() + '</div></div>') +
+              '<div class="btn-row">' +
+              '<button class="btn btn-sm btn-primary btn-wifi-connect" type="button">Sambung</button>' +
+              '<button class="btn btn-sm btn-ghost btn-wifi-close" type="button">Batal</button>' +
+              '</div>') +
           '</div></div>'
       }).join(''))
 
+      function tutupSemua() {
+        $box.find('.wifi-item').removeClass('is-open')
+        $box.find('.wifi-item-form').hide()
+      }
+
+      $box.find('.wifi-item-head').on('click', function () {
+        var $item = $(this).closest('.wifi-item')
+        var terbuka = $item.hasClass('is-open')
+        tutupSemua()
+        if (terbuka) return
+        $item.addClass('is-open')
+        $item.find('.wifi-item-form').show()
+        $item.find('.wifi-pass-input').trigger('focus')
+      })
+
+      $box.find('.btn-wifi-close').on('click', function () {
+        tutupSemua()
+      })
+
       $box.find('.btn-wifi-connect').on('click', function () {
-        var $card = $(this).closest('.wifi-row')
-        var j = list[Number($card.data('i'))]
-        var $pass = $card.find('.wifi-pass')
-        if (j.aktif) { app.toast('warning', 'Sudah terhubung ke jaringan ini'); return }
-        if (!j.terbuka && !$pass.is(':visible')) { $pass.show().find('input').focus(); return }
-        sambung(j.ssid, $pass.find('input').val(), false, j.terbuka, $(this))
+        var $item = $(this).closest('.wifi-item')
+        var j = list[Number($item.data('i'))]
+        sambung(j.ssid, $item.find('.wifi-pass-input').val(), false, j.terbuka, $(this))
       })
     }
 
@@ -1305,11 +1345,12 @@ var app = {
     }
 
     $('#btn-wifi-rescan').on('click', muatScan)
-    $('#btn-wifi-manual').on('click', function () {
+    $('#f-wifi-manual').on('submit', function (e) {
+      e.preventDefault()
       var ssid = $('[name=wifi_ssid_manual]').val()
       var pass = $('[name=wifi_pass_manual]').val()
       if (!String(ssid || '').trim()) { app.toast('warning', 'SSID wajib diisi'); return }
-      sambung(ssid, pass, true, !pass, $(this))
+      sambung(ssid, pass, true, !pass, $(this).find('button[type=submit]'))
     })
 
     muatStatus()
