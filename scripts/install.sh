@@ -328,7 +328,8 @@ chmod 755 /etc/jam-masjid/xinitrc
 cat > /etc/jam-masjid/fix-resolution.sh <<'EOS'
 #!/bin/sh
 # Paksa konektor HDMI menyala + mode 1080p untuk kiosk Jam Masjid.
-# Dijalankan ExecStartPost masjid-x.service setelah X naik.
+# STB Amlogic S905 (kernel 5.1-aml) kadang menandai HDMI-1 "disconnected"
+# walau TV menyala → meson-drm fallback ke 1024x768 (layar tidak fullscreen).
 CONNECTOR=/sys/class/drm/card0-HDMI-A-1
 for i in $(seq 1 20); do
   [ -e "$CONNECTOR/status" ] && break
@@ -340,6 +341,15 @@ if command -v xrandr >/dev/null; then
   DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --newmode 1920x1080_60.00 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null
   DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --addmode HDMI-1 1920x1080_60.00 2>/dev/null
   DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --output HDMI-1 --mode 1920x1080_60.00 2>/dev/null
+fi
+# Resize jendela kiosk ke ukuran layar penuh (window manager X minimal
+# kadang membiarkan Chromium tetap kecil walau mode layar sudah benar).
+if command -v xdotool >/dev/null; then
+  for i in $(seq 1 10); do
+    WIN=$(DISPLAY=${KIOSK_DISPLAY:-:0} xdotool search --name "Jam Masjid" 2>/dev/null | head -1)
+    [ -n "$WIN" ] && DISPLAY=${KIOSK_DISPLAY:-:0} xdotool windowsize "$WIN" 1920 1080 2>/dev/null && break
+    sleep 2
+  done
 fi
 EOS
 chmod 755 /etc/jam-masjid/fix-resolution.sh
@@ -354,14 +364,33 @@ After=systemd-user-sessions.service
 Type=simple
 User=root
 ExecStart=/usr/bin/xinit /etc/jam-masjid/xinitrc -- $KIOSK_DISPLAY vt1 -nolisten tcp
-# Setelah X naik: paksa konektor HDMI on + 1080p (mencegah layar 1024x768).
-ExecStartPost=/etc/jam-masjid/fix-resolution.sh
 Restart=always
 RestartSec=5
 
 [Install]
 WantedBy=multi-user.target
 EOF
+
+# Unit resolusi terpisah (bukan ExecStartPost masjid-x): mengatur display X
+# dari ExecStartPost membuat xinit keluar — pakai oneshot yang berjalan
+# setelah masjid-x naik.
+cat > /etc/systemd/system/masjid-resolution.service <<EOF
+[Unit]
+Description=Jam Masjid Santrimu - paksa resolusi HDMI 1080p
+After=masjid-x.service
+Requires=masjid-x.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=KIOSK_DISPLAY=$KIOSK_DISPLAY
+ExecStart=/etc/jam-masjid/fix-resolution.sh
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+EOF
+systemctl enable masjid-resolution.service
 
 # Non-root X di beberapa Armbian ditolak membuka VT; izinkan lewat Xwrapper.
 # (X tetap dijalankan root oleh unit di atas, tapi ini menjaga skenario manual.)
