@@ -10,13 +10,48 @@ runtimes** with identical routes and handlers:
 Only `src/local/env.mjs` (local) and `src/displayHub.js` (Workers) may contain
 runtime-specific infrastructure.
 
+## Workflow (cara kerja yang disepakati)
+
+1. **Kerjakan di lokal** — edit, jalankan `bun run test` (dan `bun run deploy -- --dry-run`
+   bila menyentuh Worker).
+2. **Commit** dengan pesan bahasa Indonesia yang menjelaskan sebab + akibat.
+3. **Push** ke `origin main`.
+4. **Deploy ke STB terpisah** (bukan bagian otomatis dari commit): `ssh santrimu@100.69.45.47`
+   → `cd /opt/jam-masjid && git pull` → restart unit terkait. Jangan mengedit file di STB
+   secara langsung kecuali mendesak — perubahan harus tetap masuk repo.
+
+## Baseline performa STB (Amlogic S905, tanpa GPU hardware)
+
+Xorg jatuh ke **software rendering** (`glamor initialization failed`), jadi biaya
+komposit sepenuhnya di CPU. Angka acuan setelah perbaikan:
+
+| Metrik | Normal / ideal | Tanda masalah |
+|---|---|---|
+| CPU total idle | **30–45%** (standard untuk tampilan berjalan) | >70% terus-menerus |
+| Proses GPU Chromium | **0%** | 40–90% → cek `will-change`/`contain` |
+| Load average | < 1.0 | > 2.0 (STB terasa stuck) |
+
+Penyebab historis GPU spin: `will-change: transform` + animasi pada running text.
+Aturannya sekarang: **jangan pakai `will-change`** untuk animasi dekoratif, dan beri
+`contain: strict` pada elemen beranimasi berukuran besar (`#running-text`).
+`contain: content` **tidak cukup** — terukur tetap 47% CPU; `strict` → 0%.
+
+Saat menambah animasi/efek baru di display, ukur CPU proses GPU sebelum & sesudah:
+
+```sh
+PID=$(pgrep -f 'chromium-browser --type=gpu-process' | head -1)
+read a b < <(awk '{print $14, $15}' /proc/$PID/stat); sleep 20
+read c d < <(awk '{print $14, $15}' /proc/$PID/stat)
+echo "$(( (c+d-a-b) * 100 / ($(getconf CLK_TCK) * 20) ))%"
+```
+
 ## Commands
 
 ```sh
 bun install
 cp .env.example .env        # set AUTH_SECRET (required) and optionally PORT (default 11111)
 bun run start               # local server → http://localhost:11111/ and /admin/
-bun run test                # vitest run (16 files, ~97 tests)
+bun run test                # vitest run (25 files, ~219 tests)
 bun run dev                 # wrangler dev --port 11111 (needs `bun run seed` first)
 bun run seed                # push db/database.json → local KV; add `-- --remote` for prod
 bun run deploy              # wrangler deploy
@@ -121,6 +156,40 @@ scripts/update.sh              update in-place: git pull + install + restart + r
 - SSE contract: `/api/events` emits `db-changed`; local hub mirrors the Durable
   Object interface (`HUB.idFromName('display').get().notify()`). Preserve it so
   `proses.js` stays runtime-agnostic.
+
+## Environment STB masjid (jangan di-hardcode di kode)
+
+Catatan operasional, bukan konfigurasi aplikasi — berguna saat debugging.
+
+| Item | Nilai |
+|---|---|
+| Hostname / user service | `jam-masjid` / `santrimu` |
+| Akses | Tailscale `santrimu@100.69.45.47` (utama saat kabel lepas) |
+| IP WiFi | **192.168.1.20** statis (profil NM `Masjid Baitussalam`, hidden, prioritas 10) |
+| Admin web | `http://192.168.1.20:11111/admin/` |
+| SoC / kernel | Amlogic S905, `5.1.0-aml-s905`, Xorg **software rendering** |
+| Display | HDMI-1 1920×1080; dipaksa oleh `masjid-resolution.service` |
+
+Unit systemd terkait (dipasang `install.sh`):
+
+| Unit | Fungsi |
+|---|---|
+| `masjid-display.service` | server Bun (`src/server.mjs`) |
+| `masjid-x.service` | X `:0` + openbox + `xset s off -dpms` |
+| `masjid-resolution.service` | paksa HDMI on + mode 1080p, `Before=masjid-kiosk` |
+| `masjid-kiosk.service` | Chromium kiosk + `fix-window.sh` (resize) |
+| `jam-masjid-display-guard.timer` | penjaga layar tiap 60 dtk (DPMS/HDMI/consoleblank) |
+
+Hak akses runtime yang dipasang installer:
+
+- pola polkit `50-jam-masjid-wifi.{pkla,rules}` → user service boleh `nmcli` WiFi;
+- `/etc/sudoers.d/jam-masjid-wifi` → helper sempit `jam-masjid-wifi-load`
+  (NM 1.10 memblokir `nmcli connection load`);
+- `/etc/sudoers.d/masjid-restart` → `systemctl restart masjid-*` tanpa password.
+
+Saat mengubah WiFi/IP dari jarak jauh, ingat Tailscale berjalan **di atas WiFi
+yang sama**: pakai pola uji-dulu + auto-rollback (lihat riwayat commit
+`wifi-static`), jangan langsung mengubah profil aktif.
 
 ## Conventions and gotchas
 
