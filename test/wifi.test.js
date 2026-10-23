@@ -279,12 +279,20 @@ describe('wifi - service', () => {
     expect(existsSync(stateFile)).toBe(false)
   })
 
-  it('pulihkanTrial mengonfirmasi otomatis bila WiFi baru hidup', async () => {
+  it('pulihkanTrial mengonfirmasi otomatis bila profil BARU aktif dan punya IP', async () => {
     const exec = buatFakeExec((cmd, args) => {
-      if (cmd === 'nmcli' && args.includes('device') && args.includes('status')) {
-        // ujiWifiHidup memakai -f DEVICE,STATE (2 field)
-        if (args.includes('DEVICE,STATE')) return 'eth0:connected\nwlan0:connected\n'
-        return 'eth0:ethernet:connected:Ethernet connection 1\nwlan0:wifi:connected:Baru\n'
+      if (cmd === 'nmcli' && args.includes('--active')) {
+        // profil baru (dddd…) aktif di wlan0
+        return 'dddddddd-1111-2222-3333-444444444444:wlan0\n'
+      }
+      if (cmd === 'nmcli' && args[0] === '-t' && args.includes('connection') && args.includes('show')) {
+        return [
+          'Baru:dddddddd-1111-2222-3333-444444444444:802-11-wireless:no',
+          'Rumah:aaaaaaaa-1111-2222-3333-444444444444:802-11-wireless:yes'
+        ].join('\n')
+      }
+      if (cmd === 'nmcli' && args[0] === '-t' && args[2] === 'connection' && args[3] === 'show') {
+        return '802-11-wireless.ssid:Baru\nconnection.autoconnect-priority:0\n'
       }
       if (cmd === 'nmcli' && args[0] === '-t' && args.includes('IP4.ADDRESS')) {
         return 'IP4.ADDRESS[1]:192.168.1.99/24\n'
@@ -305,6 +313,63 @@ describe('wifi - service', () => {
     const r = await svc.pulihkanTrial()
     expect(r.hasil).toBe('dikonfirmasi-otomatis')
     expect(existsSync(stateFile)).toBe(false)
+  })
+
+  it('pulihkanTrial TIDAK mengonfirmasi bila yang aktif profil lama (wlan hidup)', async () => {
+    // Kasus bug: wlan0 connected + punya IP, tapi profil baru gagal dan NM
+    // sudah kembali ke profil lama. Jangan anggap trial sukses.
+    const exec = buatFakeExec((cmd, args) => {
+      if (cmd === 'nmcli' && args.includes('--active')) {
+        return 'aaaaaaaa-1111-2222-3333-444444444444:wlan0\n'
+      }
+      if (cmd === 'nmcli' && args[0] === '-t' && args.includes('connection') && args.includes('show')) {
+        return [
+          'Baru:dddddddd-1111-2222-3333-444444444444:802-11-wireless:no',
+          'Rumah:aaaaaaaa-1111-2222-3333-444444444444:802-11-wireless:yes'
+        ].join('\n')
+      }
+      if (cmd === 'nmcli' && args[0] === '-t' && args[2] === 'connection' && args[3] === 'show') {
+        return '802-11-wireless.ssid:Rumah\nconnection.autoconnect-priority:0\n'
+      }
+      if (cmd === 'nmcli' && args[0] === '-t' && args.includes('IP4.ADDRESS')) {
+        return 'IP4.ADDRESS[1]:192.168.1.30/24\n'
+      }
+      return ''
+    })
+    let clock = 1000
+    writeFileSync(stateFile, JSON.stringify({
+      token: 'cccccccc-1111-2222-3333-444444444444',
+      uuidBaru: 'dddddddd-1111-2222-3333-444444444444',
+      ssidBaru: 'Baru',
+      uuidLama: 'aaaaaaaa-1111-2222-3333-444444444444',
+      ssidLama: 'Rumah',
+      deadline: clock + TRIAL_MS
+    }))
+    clock += TRIAL_MS + 1
+    const svc = buatService({ execFileFn: exec, stateFile, now: () => clock, setTimer: () => 1 })
+    const r = await svc.pulihkanTrial()
+    expect(r.hasil).toBe('dikembalikan')
+  })
+
+  it('revert trial dari profil tersimpan TIDAK menghapus profil pengguna', async () => {
+    // Aktifkan profil tersimpan yang sudah ada (bukan hasil input baru).
+    const exec = fakeNmcli()
+    let clock = 1000
+    const svc = buatService({ execFileFn: exec, stateFile, now: () => clock, setTimer: () => 1 })
+    const hasil = await svc.aksiProfil({
+      uuid: 'bbbbbbbb-1111-2222-3333-444444444444',
+      action: 'activate'
+    })
+    expect(hasil.ok).toBe(true)
+    expect(hasil.trial).toBeTruthy()
+    clock += 5
+    const batal = await svc.batalkanTrial(hasil.trial.token)
+    expect(batal.ok).toBe(true)
+    const arg = exec.calls.map((c) => c.args.join(' '))
+    // tidak boleh ada delete untuk profil yang diaktifkan (bbbb…)
+    expect(arg.some((a) => a.includes('delete uuid bbbbbbbb'))).toBe(false)
+    // profil lama (aaaa…) harus dihidupkan kembali
+    expect(arg.some((a) => a.includes('up uuid aaaaaaaa'))).toBe(true)
   })
 
   it('sambungWifi fallback ke helper sudo saat nmcli load ditolak polkit', async () => {

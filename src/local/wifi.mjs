@@ -273,15 +273,16 @@ export function buatService(opts = {}) {
     return r.ok ? parseIp4(r.stdout) : ''
   }
 
-  async function ujiWifiHidup() {
-    const d = await nmcli(['-t', '-f', 'DEVICE,STATE', 'device', 'status'], 10_000)
-    if (!d.ok) return false
-    let terhubung = false
-    for (const line of d.stdout.split('\n')) {
-      const f = pecahTerse(line)
-      if (f.length >= 2 && f[0] === IFACE) terhubung = f[1] === 'connected'
-    }
-    if (!terhubung) return false
+  // Apakah profil `uuid` benar-benar aktif di wlan0 DAN sudah mendapat IP?
+  // Penting: hanya memeriksa "wlan0 connected" tidak cukup — bila jaringan
+  // baru gagal, NetworkManager bisa kembali ke profil lama sehingga trial
+  // akan salah dianggap sukses.
+  async function profilBaruAktif(uuid) {
+    if (!uuid) return false
+    const semua = await profilSemua()
+    if (!semua.ok) return false
+    const p = semua.profil.find((x) => x.uuid === uuid)
+    if (!p || !p.aktif) return false
     return Boolean(await ipDevice(IFACE))
   }
 
@@ -369,8 +370,10 @@ export function buatService(opts = {}) {
     if (state.uuidLama) {
       await nmcli(['connection', 'up', 'uuid', state.uuidLama], 45_000)
     }
-    // Profil baru yang belum terkonfirmasi dihapus agar daftar tidak menumpuk.
-    if (state.uuidBaru) {
+    // HANYA profil yang BARU dibuat (input SSID/password baru) yang dihapus.
+    // Profil tersimpan milik pengguna (dipilih dari daftar) tidak boleh hilang
+    // hanya karena trial tidak dikonfirmasi.
+    if (state.uuidBaru && state.dibuatBaru) {
       await nmcli(['connection', 'delete', 'uuid', state.uuidBaru], 20_000)
     }
     hapusState()
@@ -382,9 +385,11 @@ export function buatService(opts = {}) {
     const sisa = Math.max(0, state.deadline - now())
     timer = pasangTimer(async () => {
       timer = null
-      // Bila WiFi baru ternyata hidup (punya IP), anggap sukses meski admin
-      // tidak sempat menekan Konfirmasi — jangan batalkan perubahan yang baik.
-      const hidup = await ujiWifiHidup()
+      // Bila profil BARU benar-benar aktif dan punya IP, anggap sukses meski
+      // admin tidak sempat menekan Konfirmasi. Cek profil baru — bukan hanya
+      // "wlan0 connected" — agar tidak salah menerima saat NM sudah kembali
+      // ke profil lama.
+      const hidup = await profilBaruAktif(state.uuidBaru)
       if (hidup) {
         await nmcli(['connection', 'modify', 'uuid', state.uuidBaru, 'connection.autoconnect', 'yes'], 15_000)
         hapusState()
@@ -394,11 +399,12 @@ export function buatService(opts = {}) {
     }, sisa + 50)
   }
 
-  function mulaiTrial({ uuidBaru, ssidBaru, uuidLama, ssidLama }) {
+  function mulaiTrial({ uuidBaru, ssidBaru, uuidLama, ssidLama, dibuatBaru = false }) {
     const state = {
       token: randomUUID(),
       uuidBaru,
       ssidBaru,
+      dibuatBaru: Boolean(dibuatBaru),
       uuidLama: uuidLama || '',
       ssidLama: ssidLama || '',
       deadline: now() + TRIAL_MS
@@ -419,12 +425,17 @@ export function buatService(opts = {}) {
     hentikanTimer()
     await nmcli(['connection', 'modify', 'uuid', state.uuidBaru, 'connection.autoconnect', 'yes'], 15_000)
 
-    // Hapus profil lain dengan SSID sama agar tidak ada dua profil bersaing.
-    const semua = await profilSemua()
-    if (semua.ok) {
-      for (const p of semua.profil) {
-        if (p.ssid === state.ssidBaru && p.uuid !== state.uuidBaru) {
-          await nmcli(['connection', 'delete', 'uuid', p.uuid], 20_000)
+    // Hapus profil duplikat HANYA bila profil baru memang hasil input manual
+    // dengan SSID yang sudah punya profil lain. Saat "Sambung" dari daftar
+    // profil, profil yang dipilih adalah profil milik pengguna — jangan
+    // menyentuh profil lain.
+    if (state.dibuatBaru) {
+      const semua = await profilSemua()
+      if (semua.ok) {
+        for (const p of semua.profil) {
+          if (p.ssid === state.ssidBaru && p.uuid !== state.uuidBaru) {
+            await nmcli(['connection', 'delete', 'uuid', p.uuid], 20_000)
+          }
         }
       }
     }
@@ -445,7 +456,7 @@ export function buatService(opts = {}) {
     const state = bacaState()
     if (!state) return { ok: true, ada: false }
     if (now() >= state.deadline) {
-      const hidup = await ujiWifiHidup()
+      const hidup = await profilBaruAktif(state.uuidBaru)
       if (hidup) {
         await nmcli(['connection', 'modify', 'uuid', state.uuidBaru, 'connection.autoconnect', 'yes'], 15_000)
         hapusState()
@@ -533,7 +544,8 @@ export function buatService(opts = {}) {
         uuidBaru: uuid,
         ssidBaru: vSsid.ssid,
         uuidLama: lama ? lama.uuid : '',
-        ssidLama: lama ? lama.ssid : ''
+        ssidLama: lama ? lama.ssid : '',
+        dibuatBaru: true
       })
     } else {
       await nmcli(['connection', 'modify', 'uuid', uuid, 'connection.autoconnect', 'yes'], 15_000)
