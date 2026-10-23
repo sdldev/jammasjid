@@ -331,23 +331,28 @@ cat > /etc/jam-masjid/fix-resolution.sh <<'EOS'
 # STB Amlogic S905 (kernel 5.1-aml) kadang menandai HDMI-1 "disconnected"
 # walau TV menyala → meson-drm fallback ke 1024x768 (layar tidak fullscreen).
 CONNECTOR=/sys/class/drm/card0-HDMI-A-1
-for i in $(seq 1 20); do
-  [ -e "$CONNECTOR/status" ] && break
+D=${KIOSK_DISPLAY:-:0}
+
+# Tunggu X benar-benar siap merespons klien, bukan sekadar unit aktif
+for i in $(seq 1 30); do
+  [ -e "$CONNECTOR/status" ] && DISPLAY=$D xrandr >/dev/null 2>&1 && break
   sleep 1
 done
 echo on > "$CONNECTOR/status" 2>/dev/null
+sleep 1
+
 # Mode standar CVT untuk 1920x1080@60
 if command -v xrandr >/dev/null; then
-  DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --newmode 1920x1080_60.00 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null
-  DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --addmode HDMI-1 1920x1080_60.00 2>/dev/null
-  DISPLAY=${KIOSK_DISPLAY:-:0} xrandr --output HDMI-1 --mode 1920x1080_60.00 2>/dev/null
+  DISPLAY=$D xrandr --newmode 1920x1080_60.00 173.00 1920 2048 2248 2576 1080 1083 1088 1120 -hsync +vsync 2>/dev/null
+  DISPLAY=$D xrandr --addmode HDMI-1 1920x1080_60.00 2>/dev/null
+  DISPLAY=$D xrandr --output HDMI-1 --mode 1920x1080_60.00 2>/dev/null
 fi
 # Resize jendela kiosk ke ukuran layar penuh (window manager X minimal
 # kadang membiarkan Chromium tetap kecil walau mode layar sudah benar).
 if command -v xdotool >/dev/null; then
   for i in $(seq 1 10); do
-    WIN=$(DISPLAY=${KIOSK_DISPLAY:-:0} xdotool search --name "Jam Masjid" 2>/dev/null | head -1)
-    [ -n "$WIN" ] && DISPLAY=${KIOSK_DISPLAY:-:0} xdotool windowsize "$WIN" 1920 1080 2>/dev/null && break
+    WIN=$(DISPLAY=$D xdotool search --name "Jam Masjid" 2>/dev/null | head -1)
+    [ -n "$WIN" ] && DISPLAY=$D xdotool windowsize "$WIN" 1920 1080 2>/dev/null && break
     sleep 2
   done
 fi
