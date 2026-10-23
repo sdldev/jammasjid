@@ -450,6 +450,66 @@ WantedBy=multi-user.target
 EOF
 systemctl enable masjid-resolution.service
 
+# Penjaga layar independen (systemd timer tiap 60 dtk). Lapisan kedua setelah
+# xset di xinitrc: memulihkan DPMS/screensaver/HDMI yang aktif kembali, juga
+# saat X restart. Tanpa ini monitor bisa blank setelah ~10 menit.
+cat > /usr/local/bin/jam-masjid-display-guard.sh <<'EOS'
+#!/bin/sh
+# Pastikan monitor tidak pernah blank/sleep (DPMS, screensaver, HDMI off).
+set -u
+D=${KIOSK_DISPLAY:-:0}
+DISPLAY="$D" xset q >/dev/null 2>&1 || exit 0   # X belum siap
+DISPLAY="$D" xset s off -dpms s noblank >/dev/null 2>&1 || true
+if DISPLAY="$D" xset q 2>/dev/null | grep -q 'DPMS is Enabled'; then
+  logger -t jam-masjid-display-guard "PERINGATAN: DPMS masih aktif setelah xset -dpms"
+fi
+for c in /sys/class/drm/card*-HDMI-A-*/dpms; do
+  [ -e "$c" ] || continue
+  if [ "$(cat "$c" 2>/dev/null)" = "Off" ]; then
+    out=$(basename "$(dirname "$c")" | sed 's/^card[0-9]*-//')
+    DISPLAY="$D" xrandr --output "$out" --auto >/dev/null 2>&1 || true
+    logger -t jam-masjid-display-guard "HDMI $out sempat Off — diaktifkan ulang"
+  fi
+done
+if [ -w /sys/module/kernel/parameters/consoleblank ] 2>/dev/null; then
+  cb=$(cat /sys/module/kernel/parameters/consoleblank 2>/dev/null || echo 0)
+  if [ "${cb:-0}" != "0" ]; then
+    echo 0 > /sys/module/kernel/parameters/consoleblank 2>/dev/null \
+      && logger -t jam-masjid-display-guard "consoleblank $cb -> 0"
+  fi
+fi
+exit 0
+EOS
+chmod 755 /usr/local/bin/jam-masjid-display-guard.sh
+
+cat > /etc/systemd/system/jam-masjid-display-guard.service <<EOF
+[Unit]
+Description=Jam Masjid - penjaga layar (DPMS/screensaver/HDMI)
+After=masjid-x.service
+Requires=masjid-x.service
+
+[Service]
+Type=oneshot
+User=root
+Environment=KIOSK_DISPLAY=$KIOSK_DISPLAY
+ExecStart=/usr/local/bin/jam-masjid-display-guard.sh
+EOF
+
+cat > /etc/systemd/system/jam-masjid-display-guard.timer <<'EOT'
+[Unit]
+Description=Jam Masjid - jalankan penjaga layar tiap menit
+
+[Timer]
+OnBootSec=60
+OnUnitActiveSec=60
+AccuracySec=5s
+Unit=jam-masjid-display-guard.service
+
+[Install]
+WantedBy=timers.target
+EOT
+systemctl enable jam-masjid-display-guard.timer
+
 # Non-root X di beberapa Armbian ditolak membuka VT; izinkan lewat Xwrapper.
 # (X tetap dijalankan root oleh unit di atas, tapi ini menjaga skenario manual.)
 printf 'allowed_users=anybody\nneeds_root_rights=yes\n' > /etc/X11/Xwrapper.config
