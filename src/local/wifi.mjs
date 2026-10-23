@@ -124,18 +124,22 @@ export function parseIp4(stdout) {
 // -------------------------------------------------------------- keyfile -----
 
 export function bangunKeyfile({ uuid, ssid, password, hidden, autoconnect = false, priority = 0, nama }) {
+  // PENTING: keyfile NetworkManager memakai `true`/`false`, BUKAN yes/no.
+  // NM 1.10 (Ubuntu 18.04/Armbian) mengabaikan yes/no diam-diam, sehingga
+  // autoconnect/hidden kembali ke default (true/no) — proteksi trial gagal.
+  const bool = (v) => (v ? 'true' : 'false')
   const lines = [
     '[connection]',
     'id=' + (nama || ssid),
     'uuid=' + uuid,
     'type=wifi',
-    'autoconnect=' + (autoconnect ? 'yes' : 'no'),
+    'autoconnect=' + bool(autoconnect),
     'autoconnect-priority=' + Number(priority || 0),
     '',
     '[wifi]',
     'mode=infrastructure',
     'ssid=' + ssid,
-    'hidden=' + (hidden ? 'yes' : 'no'),
+    'hidden=' + bool(hidden),
     ''
   ]
   if (password) {

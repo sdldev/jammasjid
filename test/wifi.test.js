@@ -93,15 +93,18 @@ describe('wifi - keyfile', () => {
     })
     expect(isi).toContain('ssid=Masjid Baitussalam')
     expect(isi).toContain('psk=rahasia123')
-    expect(isi).toContain('hidden=yes')
-    expect(isi).toContain('autoconnect=no')
+    // NM 1.10 hanya mengerti true/false (yes/no diabaikan diam-diam)
+    expect(isi).toContain('hidden=true')
+    expect(isi).toContain('autoconnect=false')
+    expect(isi).not.toContain('hidden=yes')
+    expect(isi).not.toContain('autoconnect=no')
     expect(isi).not.toContain('\r')
   })
 
   it('jaringan terbuka tidak menulis blok wifi-security', () => {
     const isi = bangunKeyfile({ uuid: 'x', ssid: 'Publik', password: '', hidden: false })
     expect(isi).not.toContain('[wifi-security]')
-    expect(isi).toContain('hidden=no')
+    expect(isi).toContain('hidden=false')
   })
 })
 
