@@ -471,6 +471,12 @@ export function buatService(opts = {}) {
       const isi = bangunKeyfile({ uuid, ssid, password, hidden, autoconnect, nama })
       writeFileSync(file, isi, { mode: 0o600 })
       const r = await nmcli(['connection', 'load', file], 25_000)
+      if (r.ok) return r
+      // NetworkManager lama (1.10/Armbian) memblokir `connection load` lewat
+      // polkit. Jalan sempit: helper root yang hanya menerima keyfile wifi.
+      if (/access denied|not authorized|insufficient/i.test(r.stderr)) {
+        return jalankan(execFileFn, 'sudo', ['-n', '/usr/local/bin/jam-masjid-wifi-load', file], 25_000)
+      }
       return r
     } finally {
       if (dir) { try { rmSync(dir, { recursive: true, force: true }) } catch { /* abaikan */ } }

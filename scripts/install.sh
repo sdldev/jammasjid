@@ -590,7 +590,7 @@ elif ! systemctl is-active --quiet NetworkManager 2>/dev/null; then
 else
   log "Menyiapkan izin polkit WiFi untuk user $APP_USER..."
   mkdir -p /etc/polkit-1/localauthority/50-local.d /etc/polkit-1/rules.d
-  NM_ACTIONS="org.freedesktop.NetworkManager.enable-disable-wifi;org.freedesktop.NetworkManager.network-control;org.freedesktop.NetworkManager.settings.modify.system;org.freedesktop.NetworkManager.settings.modify.own;org.freedesktop.NetworkManager.wifi.scan"
+  NM_ACTIONS="org.freedesktop.NetworkManager.enable-disable-wifi;org.freedesktop.NetworkManager.network-control;org.freedesktop.NetworkManager.settings.modify.system;org.freedesktop.NetworkManager.settings.modify.own;org.freedesktop.NetworkManager.reload"
   # polkit 0.105 (Ubuntu 18.04/Armbian lama) memakai .pkla
   cat > /etc/polkit-1/localauthority/50-local.d/50-jam-masjid-wifi.pkla <<EOF
 [WiFi admin Jam Masjid]
@@ -609,7 +609,7 @@ polkit.addRule(function(action, subject) {
     'org.freedesktop.NetworkManager.network-control',
     'org.freedesktop.NetworkManager.settings.modify.system',
     'org.freedesktop.NetworkManager.settings.modify.own',
-    'org.freedesktop.NetworkManager.wifi.scan'
+    'org.freedesktop.NetworkManager.reload'
   ];
   if (allowed.indexOf(action.id) !== -1 && subject.user === '$APP_USER') {
     return polkit.Result.YES;
@@ -619,6 +619,23 @@ EOF
   chmod 644 /etc/polkit-1/localauthority/50-local.d/50-jam-masjid-wifi.pkla
   chmod 644 /etc/polkit-1/rules.d/50-jam-masjid-wifi.rules
   systemctl reload polkit 2>/dev/null || systemctl restart polkit 2>/dev/null || true
+
+  # NetworkManager 1.10 (Ubuntu 18.04/Armbian) memblokir `nmcli connection load`
+  # lewat polkit. Pasang helper root sempit + sudoers agar server bisa
+  # memasang keyfile WiFi tanpa memberi akses root penuh.
+  SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+  if [[ -f "$SCRIPT_DIR/jam-masjid-wifi-load" ]]; then
+    install -m 755 -o root -g root "$SCRIPT_DIR/jam-masjid-wifi-load" /usr/local/bin/jam-masjid-wifi-load
+    cat > /etc/sudoers.d/jam-masjid-wifi <<EOF
+# Jam Masjid — pasang profil WiFi (keyfile) via helper sempit.
+$APP_USER ALL=(root) NOPASSWD: /usr/local/bin/jam-masjid-wifi-load
+EOF
+    chmod 440 /etc/sudoers.d/jam-masjid-wifi
+    visudo -c -f /etc/sudoers.d/jam-masjid-wifi >/dev/null 2>&1 \
+      || warn "Aturan sudoers WiFi gagal diverifikasi — periksa /etc/sudoers.d/jam-masjid-wifi"
+  else
+    warn "scripts/jam-masjid-wifi-load tidak ditemukan — simpan profil WiFi dari admin mungkin gagal di NM lama."
+  fi
   ok "Izin polkit WiFi terpasang untuk $APP_USER."
 fi
 

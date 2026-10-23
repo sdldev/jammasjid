@@ -1,0 +1,41 @@
+#!/bin/sh
+# =============================================================================
+# jam-masjid-wifi-load — pasang profil WiFi (keyfile) ke NetworkManager.
+#
+# Dipanggil server Jam Masjid lewat `sudo -n` (aturan di
+# /etc/sudoers.d/jam-masjid-wifi). `nmcli connection load` diblokir polkit pada
+# NetworkManager lama (1.10/Armbian), sedangkan menulis langsung ke
+# /etc/NetworkManager/system-connections butuh root. Helper ini adalah jalur
+# sempit untuk itu.
+#
+# Pemakaian: jam-masjid-wifi-load /path/ke/profil.nmconnection
+#
+# Keamanan:
+#   - Hanya menerima file keyfile WiFi dengan [connection] uuid= dan type=wifi.
+#   - Nama file tujuan diturunkan dari UUID (bukan dari input), sehingga tidak
+#     bisa menimpa file sembarang.
+#   - Password hanya ada di isi file (0600), tidak pernah di argv/log.
+# =============================================================================
+set -eu
+
+SRC="${1:-}"
+DEST_DIR=/etc/NetworkManager/system-connections
+
+die() { echo "jam-masjid-wifi-load: $*" >&2; exit 1; }
+
+[ -n "$SRC" ] || die "path keyfile wajib"
+[ -f "$SRC" ] || die "file tidak ditemukan: $SRC"
+
+UUID="$(sed -n 's/^uuid=//p' "$SRC" | head -n1 | tr -d '[:space:]')"
+SSID="$(sed -n 's/^ssid=//p' "$SRC" | head -n1)"
+TYPE="$(sed -n 's/^type=//p' "$SRC" | head -n1 | tr -d '[:space:]')"
+
+[ "$TYPE" = "wifi" ] || die "hanya profil wifi yang diizinkan"
+[ -n "$SSID" ] || die "ssid kosong"
+printf '%s' "$UUID" | grep -Eq '^[0-9a-fA-F-]{36}$' || die "uuid tidak valid"
+
+DEST="$DEST_DIR/$UUID.nmconnection"
+install -m 600 -o root -g root "$SRC" "$DEST"
+# reload agar NetworkManager membaca profil baru
+nmcli connection reload >/dev/null 2>&1 || systemctl reload NetworkManager >/dev/null 2>&1 || true
+echo "ok $UUID"
