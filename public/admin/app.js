@@ -1063,6 +1063,10 @@ var app = {
     var polling = null
     var countdown = null
     var tokenAktif = null
+    // Tanda koneksi WiFi terakhir; dipakai polling untuk mendeteksi perubahan
+    // (mis. tersambung dari luar halaman ini) lalu menyegarkan daftar otomatis.
+    var sigKoneksi = ''
+    var muatScanTerakhir = 0
 
     function stopPolling() {
       if (polling) { clearInterval(polling); polling = null }
@@ -1097,6 +1101,13 @@ var app = {
     )
 
     // --- status -------------------------------------------------------------
+    // Sidik koneksi: berubah saat SSID/status WiFi berganti.
+    function sidikKoneksi(st) {
+      var w = (st && st.wlan) || {}
+      return (w.terhubung ? '1' : '0') + '|' + (w.ssid || '') + '|' + (w.ip || '') +
+        '|' + ((st && st.ethernet && st.ethernet.terhubung) ? '1' : '0') + '|' + ((st && st.internet) ? '1' : '0')
+    }
+
     function renderStatus(st) {
       if (!st) return
       var w = st.wlan || {}
@@ -1149,7 +1160,7 @@ var app = {
         app.api('wifiTrialConfirm', { token: tr.token }).done(function (res) {
           if (res.success) {
             app.toast('success', 'WiFi ' + (res.data.ssid || '') + ' tersimpan')
-            muatStatus(); muatProfil()
+            segarkanSemua()
           } else {
             app.toast('danger', res.data)
             $btn.prop('disabled', false).text('Konfirmasi')
@@ -1161,9 +1172,23 @@ var app = {
         app.api('wifiTrialCancel', { token: tr.token }).done(function (res) {
           if (res.success) app.toast('success', 'Koneksi dikembalikan')
           else app.toast('danger', res.data)
-          muatStatus(); muatProfil()
+          segarkanSemua()
         }).always(function () { $btn.prop('disabled', false).text('Batalkan') })
       })
+    }
+
+    // Terapkan status + deteksi perubahan koneksi. Bila WiFi/ethernet/internet
+    // berubah (termasuk karena tersambung dari tempat lain), daftar jaringan
+    // dan profil ikut disegarkan otomatis tanpa perlu muat ulang halaman.
+    function terapkanStatus(st) {
+      renderStatus(st)
+      renderTrial(st.trial)
+      var sig = sidikKoneksi(st)
+      if (sigKoneksi && sig !== sigKoneksi) {
+        muatScan()
+        muatProfil()
+      }
+      sigKoneksi = sig
     }
 
     function muatStatus() {
@@ -1174,11 +1199,18 @@ var app = {
           $('#wifi-profiles').html('')
           return
         }
-        renderStatus(res.data)
-        renderTrial(res.data.trial)
+        terapkanStatus(res.data)
       }).fail(function () {
         $('#wifi-status').html('<p class="field-note">Gagal menghubungi server.</p>')
       })
+    }
+
+    // Segarkan ketiga kartu sekaligus (status, daftar jaringan, profil).
+    // Dipakai setelah aksi yang mengubah koneksi agar UI langsung berganti.
+    function segarkanSemua() {
+      muatStatus()
+      muatScan()
+      muatProfil()
     }
 
     // --- pindai -------------------------------------------------------------
@@ -1189,7 +1221,9 @@ var app = {
         .done(function (res) {
           if (!res.success) { app.toast('danger', res.data); $btn.prop('disabled', false).text(teks); return }
           app.toast('success', 'Tersambung ke ' + (res.data.ssid || ssid))
-          muatStatus(); muatProfil()
+          // Daftar ikut dirender ulang: baris SSID berubah jadi "terhubung"
+          // dan form password yang terbuka otomatis tertutup.
+          segarkanSemua()
         })
         .fail(function () { app.toast('danger', 'Gagal menghubungi server'); $btn.prop('disabled', false).text(teks) })
     }
@@ -1259,6 +1293,12 @@ var app = {
     }
 
     function muatScan() {
+      // Dedupe: segarkanSemua() + deteksi perubahan koneksi bisa memicu
+      // pemindaian ganda dalam satu momen. Rescan mahal (~1-5 dtk), jadi
+      // permintaan kedua dalam 1 detik dilewati.
+      var now = Date.now()
+      if (now - muatScanTerakhir < 1000) return
+      muatScanTerakhir = now
       $('#wifi-scan').html('<p class="field-note">Memindai...</p>')
       app.api('wifiScan').done(function (res) {
         if (res.success) renderScan(res.data.jaringan)
@@ -1306,7 +1346,7 @@ var app = {
         app.api('wifiProfile', { uuid: p.uuid, action: 'activate' }).done(function (res) {
           if (!res.success) { app.toast('danger', res.data); $btn.prop('disabled', false).text('Sambung'); return }
           app.toast('success', 'Tersambung ke ' + (p.ssid || p.nama))
-          muatStatus(); muatProfil()
+          segarkanSemua()
         })
       })
       $box.find('.btn-wifi-main').on('click', function () {
@@ -1358,12 +1398,13 @@ var app = {
     muatProfil()
 
     // Polling ringan: status + trial (hanya saat halaman ini terbuka).
+    // Lewat terapkanStatus() agar daftar jaringan/profil ikut berganti sendiri
+    // begitu WiFi tersambung (atau putus) tanpa campur tangan pengguna.
     polling = setInterval(function () {
       if (!$('#wifi-status').length) { stopPolling(); return }
       app.api('wifiStatus').done(function (res) {
         if (!res.success) return
-        renderStatus(res.data)
-        renderTrial(res.data.trial)
+        terapkanStatus(res.data)
       })
     }, 5000)
   }
