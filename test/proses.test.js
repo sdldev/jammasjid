@@ -345,6 +345,75 @@ describe('proses API - Quick Tunnel', () => {
   }
 })
 
+describe('proses API - WiFi', () => {
+  let env, cookie
+
+  beforeEach(async () => {
+    env = makeEnv()
+    cookie = await login(env)
+  })
+
+  const IDS = [
+    'wifiStatus', 'wifiScan', 'wifiProfiles',
+    'wifiConnect', 'wifiTrialConfirm', 'wifiTrialCancel', 'wifiProfile'
+  ]
+
+  for (const id of IDS) {
+    it(`${id} di env tanpa LOCAL_UPDATE (Workers) → fail lokal-only`, async () => {
+      const res = await handleProses(post({ id }, cookie), env)
+      const body = await res.json()
+      expect(body.success).toBe(false)
+      expect(body.data).toBe('Fitur WiFi hanya tersedia pada mode lokal (STB)')
+    })
+
+    it(`${id} tanpa login → registered:false`, async () => {
+      const res = await handleProses(post({ id }), env)
+      expect((await res.json()).registered).toBe(false)
+    })
+  }
+
+  // Validasi harus menolak SEBELUM menyentuh nmcli (tidak ada spawn di tes).
+  it('wifiConnect menolak SSID kosong', async () => {
+    env.LOCAL_UPDATE = true
+    const res = await handleProses(post({ id: 'wifiConnect', dt: { ssid: '  ' } }, cookie), env)
+    const body = await res.json()
+    expect(body.success).toBe(false)
+    expect(body.data).toBe('SSID wajib diisi')
+  })
+
+  it('wifiConnect menolak SSID lebih dari 32 byte', async () => {
+    env.LOCAL_UPDATE = true
+    const res = await handleProses(post({ id: 'wifiConnect', dt: { ssid: 'x'.repeat(33) } }, cookie), env)
+    const body = await res.json()
+    expect(body.data).toBe('SSID maksimal 32 byte')
+  })
+
+  it('wifiConnect menolak password lebih dari 64 karakter', async () => {
+    env.LOCAL_UPDATE = true
+    const res = await handleProses(post({ id: 'wifiConnect', dt: { ssid: 'Masjid', password: 'x'.repeat(65) } }, cookie), env)
+    expect((await res.json()).data).toBe('Password WiFi terlalu panjang')
+  })
+
+  it('wifiProfile menolak UUID tidak valid', async () => {
+    env.LOCAL_UPDATE = true
+    const res = await handleProses(post({ id: 'wifiProfile', dt: { uuid: 'bukan-uuid', action: 'delete' } }, cookie), env)
+    expect((await res.json()).data).toBe('UUID profil tidak valid')
+  })
+
+  it('wifiProfile menolak aksi di luar whitelist', async () => {
+    env.LOCAL_UPDATE = true
+    const uuid = '11111111-2222-3333-4444-555555555555'
+    const res = await handleProses(post({ id: 'wifiProfile', dt: { uuid, action: 'rm -rf /' } }, cookie), env)
+    expect((await res.json()).data).toBe('Aksi profil tidak dikenal')
+  })
+
+  it('wifiTrialConfirm menolak token tidak valid', async () => {
+    env.LOCAL_UPDATE = true
+    const res = await handleProses(post({ id: 'wifiTrialConfirm', dt: { token: '; rm -rf /' } }, cookie), env)
+    expect((await res.json()).data).toBe('Token konfirmasi tidak valid')
+  })
+})
+
 describe('proses API - Kas Masjid', () => {
   let env, cookie
 

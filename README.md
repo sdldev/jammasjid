@@ -196,6 +196,27 @@ Perbarui sekarang** (hanya mode lokal/STB; memerlukan login admin). Tampilannya
 mem-poll log `update.sh` real-time; server me-restart otomatis setelah selesai
 — halaman admin perlu dimuat ulang.
 
+### WiFi dari dashboard admin (lokal saja)
+
+Admin → **Lainnya → WiFi** memakai NetworkManager (`nmcli`) untuk:
+
+- memindai SSID di sekitar dan menyambung (termasuk **SSID tersembunyi**),
+- mengelola profil tersimpan: sambung otomatis, prioritas utama, hapus,
+- melihat status IP eth0 / WiFi / Tailscale dan ketersediaan internet.
+
+Pergantian jaringan memakai **masa uji 120 detik**. Setelah menyambung, admin
+harus menekan **Konfirmasi**; bila tidak (mis. akses admin terputus), server
+mengembalikan profil sebelumnya otomatis sehingga STB tidak "hilang" dari
+jaringan. Profil baru baru diaktifkan `autoconnect` setelah dikonfirmasi (atau
+bila WiFi baru terbukti mendapat IP).
+
+Server berjalan sebagai user biasa, jadi `install.sh` memasang aturan polkit
+terbatas (`/etc/polkit-1/localauthority/50-local.d/50-jam-masjid-wifi.pkla` dan
+`rules.d/50-jam-masjid-wifi.rules`) untuk aksi NetworkManager yang diperlukan.
+Tanpa aturan itu halaman WiFi menampilkan pesan akses ditolak. Lewati tahap ini
+dengan `--skip-wifi`. Aplikasi hanya mengubah `wlan0`; eth0 dan Tailscale tidak
+disentuh. Di mode Workers semua handler WiFi ditolak (lokal-only).
+
 ### Instalasi manual (alternatif)
 
 ```sh

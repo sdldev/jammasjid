@@ -9,6 +9,7 @@
 #   sudo bash install.sh
 #   sudo bash install.sh --user orang --dir /opt/jam-masjid
 #   sudo bash install.sh --skip-cleanup        # lewati pembersihan apt
+#   sudo bash install.sh --skip-wifi          # lewati aturan polkit WiFi admin
 #   sudo bash install.sh --branch main
 #
 # Yang dilakukan:
@@ -35,6 +36,7 @@ KIOSK_DISPLAY="${KIOSK_DISPLAY:-:0}"
 SKIP_CLEANUP=0
 SKIP_UPGRADE=0
 SKIP_TAILSCALE=0
+SKIP_WIFI=0
 SKIP_CLOUDFLARED=0
 TAILSCALE_OWNER="${TAILSCALE_OWNER:-satrimuhub@gmail.com}"
 PORT="${PORT:-11111}"
@@ -65,6 +67,7 @@ while [[ $# -gt 0 ]]; do
     --port)        PORT="${2:?--port butuh nilai}"; shift 2 ;;
     --tailscale-email) TAILSCALE_OWNER="${2:?--tailscale-email butuh nilai}"; shift 2 ;;
     --skip-tailscale) SKIP_TAILSCALE=1; shift ;;
+    --skip-wifi)   SKIP_WIFI=1; shift ;;
     --skip-cloudflared) SKIP_CLOUDFLARED=1; shift ;;
     --skip-cleanup) SKIP_CLEANUP=1; shift ;;
     --skip-upgrade) SKIP_UPGRADE=1; shift ;;
@@ -572,6 +575,51 @@ else
   else
     warn "Gagal mengunduh cloudflared — Quick Tunnel nonaktif sampai dipasang manual."
   fi
+fi
+
+# ---------- 10c. WiFi dari panel admin (NetworkManager + polkit) ------------
+# Server berjalan sebagai $APP_USER (bukan root). Agar halaman admin WiFi bisa
+# memakai nmcli, beri izin polkit terbatas untuk aksi NetworkManager yang
+# diperlukan. Hanya wlan0 yang disentuh oleh aplikasi; eth0 tidak diubah.
+if [[ $SKIP_WIFI -eq 1 ]]; then
+  warn "Aturan polkit WiFi dilewati (--skip-wifi). Halaman WiFi admin akan menolak dengan pesan akses."
+elif ! command -v nmcli >/dev/null 2>&1; then
+  warn "nmcli tidak ditemukan — WiFi dari admin nonaktif. Pasang: sudo apt-get install network-manager"
+elif ! systemctl is-active --quiet NetworkManager 2>/dev/null; then
+  warn "NetworkManager tidak aktif — WiFi dari admin tidak akan bekerja."
+else
+  log "Menyiapkan izin polkit WiFi untuk user $APP_USER..."
+  mkdir -p /etc/polkit-1/localauthority/50-local.d /etc/polkit-1/rules.d
+  NM_ACTIONS="org.freedesktop.NetworkManager.enable-disable-wifi;org.freedesktop.NetworkManager.network-control;org.freedesktop.NetworkManager.settings.modify.system;org.freedesktop.NetworkManager.settings.modify.own;org.freedesktop.NetworkManager.wifi.scan"
+  # polkit 0.105 (Ubuntu 18.04/Armbian lama) memakai .pkla
+  cat > /etc/polkit-1/localauthority/50-local.d/50-jam-masjid-wifi.pkla <<EOF
+[WiFi admin Jam Masjid]
+Identity=unix-user:$APP_USER
+Action=$NM_ACTIONS
+ResultAny=yes
+ResultInactive=yes
+ResultActive=yes
+EOF
+  # polkit >= 0.106 (Ubuntu 20.04+) memakai .rules
+  cat > /etc/polkit-1/rules.d/50-jam-masjid-wifi.rules <<EOF
+// WiFi admin Jam Masjid — izinkan user service mengelola koneksi WiFi.
+polkit.addRule(function(action, subject) {
+  var allowed = [
+    'org.freedesktop.NetworkManager.enable-disable-wifi',
+    'org.freedesktop.NetworkManager.network-control',
+    'org.freedesktop.NetworkManager.settings.modify.system',
+    'org.freedesktop.NetworkManager.settings.modify.own',
+    'org.freedesktop.NetworkManager.wifi.scan'
+  ];
+  if (allowed.indexOf(action.id) !== -1 && subject.user === '$APP_USER') {
+    return polkit.Result.YES;
+  }
+});
+EOF
+  chmod 644 /etc/polkit-1/localauthority/50-local.d/50-jam-masjid-wifi.pkla
+  chmod 644 /etc/polkit-1/rules.d/50-jam-masjid-wifi.rules
+  systemctl reload polkit 2>/dev/null || systemctl restart polkit 2>/dev/null || true
+  ok "Izin polkit WiFi terpasang untuk $APP_USER."
 fi
 
 # ---------- ringkasan --------------------------------------------------------

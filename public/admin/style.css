@@ -339,6 +339,20 @@ textarea.input { height: auto; min-height: 72px; padding: 12px 14px; resize: ver
   margin-bottom: 12px;
 }
 .list-card-title { font-size: 14px; font-weight: 700; color: var(--muted); }
+
+/* WiFi: daftar jaringan & profil */
+.wifi-signal { font-size: 12px; font-weight: 700; color: var(--accent); }
+.wifi-priority {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--accent-dark);
+  background: var(--accent-soft);
+  border-radius: 999px;
+  padding: 2px 8px;
+}
+.wifi-pass { margin-bottom: 10px; }
+.wifi-row .btn-row, .wifi-profile .btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.wifi-row .btn, .wifi-profile .btn { width: auto; flex: 1 1 auto; }
 .delete-btn {
   display: inline-flex; align-items: center; gap: 6px;
   border: 0; background: var(--danger-soft); color: var(--danger);

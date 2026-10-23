@@ -411,6 +411,108 @@ async function handleQuickTunnelStatus(env) {
   }
 }
 
+// --- WiFi (mode lokal saja) -------------------------------------------------
+// NetworkManager lewat nmcli; butuh node:child_process → import DINAMIS.
+const FAIL_WIFI_LOCAL = 'Fitur WiFi hanya tersedia pada mode lokal (STB)'
+
+async function handleWifiStatus(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_WIFI_LOCAL)
+  try {
+    const { statusJaringan } = await import('../local/wifi.mjs')
+    const r = await statusJaringan()
+    return r.ok ? ok(r) : fail(r.message)
+  } catch (err) {
+    return fail('Gagal membaca status jaringan: ' + err.message)
+  }
+}
+
+async function handleWifiProfiles(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_WIFI_LOCAL)
+  try {
+    const { daftarProfil } = await import('../local/wifi.mjs')
+    const r = await daftarProfil()
+    return r.ok ? ok(r) : fail(r.message)
+  } catch (err) {
+    return fail('Gagal membaca profil WiFi: ' + err.message)
+  }
+}
+
+async function handleWifiScan(env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_WIFI_LOCAL)
+  try {
+    const { pindaiWifi } = await import('../local/wifi.mjs')
+    const r = await pindaiWifi()
+    return r.ok ? ok(r) : fail(r.message)
+  } catch (err) {
+    return fail('Gagal memindai WiFi: ' + err.message)
+  }
+}
+
+async function handleWifiConnect(dt, env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_WIFI_LOCAL)
+  // Validasi dasar sebelum menyentuh NetworkManager.
+  const ssid = String(dt?.ssid || '').trim()
+  if (!ssid) return fail('SSID wajib diisi')
+  // TextEncoder: tersedia di Workers maupun Bun (hindari Buffer di src/lib).
+  if (new TextEncoder().encode(ssid).length > 32) return fail('SSID maksimal 32 byte')
+  const password = String(dt?.password || '')
+  if (password.length > 64) return fail('Password WiFi terlalu panjang')
+  const hidden = dt?.hidden === true || dt?.hidden === '1' || dt?.hidden === 'yes'
+  const terbuka = dt?.terbuka === true || dt?.terbuka === '1'
+  const sambung = !(dt?.sambung === false || dt?.sambung === '0')
+
+  try {
+    const { sambungWifi } = await import('../local/wifi.mjs')
+    const r = await sambungWifi({ ssid, password, hidden, terbuka, sambung })
+    return r.ok ? ok(r) : fail(r.message)
+  } catch (err) {
+    return fail('Gagal menyambung WiFi: ' + err.message)
+  }
+}
+
+async function handleWifiTrialConfirm(dt, env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_WIFI_LOCAL)
+  const token = String(dt?.token || '')
+  if (!/^[0-9a-f-]{36}$/i.test(token)) return fail('Token konfirmasi tidak valid')
+  try {
+    const { konfirmasiTrial } = await import('../local/wifi.mjs')
+    const r = await konfirmasiTrial(token)
+    return r.ok ? ok(r) : fail(r.message)
+  } catch (err) {
+    return fail('Gagal mengonfirmasi WiFi: ' + err.message)
+  }
+}
+
+async function handleWifiTrialCancel(dt, env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_WIFI_LOCAL)
+  const token = String(dt?.token || '')
+  if (token && !/^[0-9a-f-]{36}$/i.test(token)) return fail('Token tidak valid')
+  try {
+    const { batalkanTrial } = await import('../local/wifi.mjs')
+    const r = await batalkanTrial(token)
+    return r.ok ? ok(r) : fail(r.message)
+  } catch (err) {
+    return fail('Gagal membatalkan uji WiFi: ' + err.message)
+  }
+}
+
+const AKSI_PROFIL = new Set(['activate', 'autoconnect', 'utama', 'delete'])
+
+async function handleWifiProfile(dt, env) {
+  if (!env.LOCAL_UPDATE) return fail(FAIL_WIFI_LOCAL)
+  const uuid = String(dt?.uuid || '')
+  if (!/^[0-9a-f-]{36}$/i.test(uuid)) return fail('UUID profil tidak valid')
+  const action = String(dt?.action || '')
+  if (!AKSI_PROFIL.has(action)) return fail('Aksi profil tidak dikenal')
+  try {
+    const { aksiProfil } = await import('../local/wifi.mjs')
+    const r = await aksiProfil({ uuid, action, nilai: dt?.nilai })
+    return r.ok ? ok(r) : fail(r.message)
+  } catch (err) {
+    return fail('Gagal mengubah profil WiFi: ' + err.message)
+  }
+}
+
 // --- entrypoint -------------------------------------------------------------
 const HANDLERS = {
   login: (body, env, _origin, request) => handleLogin(body, env, request),
@@ -430,6 +532,13 @@ const HANDLERS = {
   quickTunnelStart: (_body, env) => handleQuickTunnelStart(env),
   quickTunnelStop: (_body, env) => handleQuickTunnelStop(env),
   quickTunnelStatus: (_body, env) => handleQuickTunnelStatus(env),
+  wifiStatus: (_body, env) => handleWifiStatus(env),
+  wifiScan: (_body, env) => handleWifiScan(env),
+  wifiProfiles: (_body, env) => handleWifiProfiles(env),
+  wifiConnect: (body, env) => handleWifiConnect(body.dt || {}, env),
+  wifiTrialConfirm: (body, env) => handleWifiTrialConfirm(body.dt || {}, env),
+  wifiTrialCancel: (body, env) => handleWifiTrialCancel(body.dt || {}, env),
+  wifiProfile: (body, env) => handleWifiProfile(body.dt || {}, env),
   resetDevice: (body, env, origin, request) => handleResetDevice(body.dt, env, origin, request)
 }
 

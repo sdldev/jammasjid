@@ -163,4 +163,10 @@ server.listen(env.PORT, () => {
   console.log(`Display  : http://localhost:${env.PORT}/`)
   console.log(`Admin    : http://localhost:${env.PORT}/admin/`)
   startScheduler(env)
+  // WiFi: lanjutkan/menuntaskan sesi uji yang tertinggal bila server sempat
+  // restart saat pergantian jaringan. Gagal di sini tidak boleh mematikan server.
+  import('./local/wifi.mjs')
+    .then((m) => m.pulihkanTrial())
+    .then((r) => { if (r && r.ada) console.log('[wifi] sesi uji:', r.hasil) })
+    .catch(() => {})
 })

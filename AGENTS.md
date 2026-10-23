@@ -43,6 +43,7 @@ clear message.
 src/worker.js            Worker entrypoint (routes mirror server.mjs)
 src/server.mjs           Local Node server: router, static files, SSE, scheduler start
 src/local/env.mjs        Local adapter: KV→db/database.json, HUB→in-process SSE, .env loader
+src/local/wifi.mjs       WiFi via nmcli (lokal): scan/sambung/profil + trial auto-revert
 src/displayHub.js        Durable Object SSE hub (Workers only)
 src/lib/render.js        Injects db into src/templates/index.html
 src/lib/proses.js        POST /api/proses dispatcher (all admin/display operations)
@@ -92,6 +93,13 @@ scripts/update.sh              update in-place: git pull + install + restart + r
   `parseFormBody`. `index` is `no-index` (merge object), `new` (append), or numeric.
 - **Every mutation must call `notifyHub()`** (and cache invalidation where relevant),
   otherwise displays stay stale until the 5-minute hash check.
+- Local-only features (update, Tailscale, Quick Tunnel, WiFi) guard with
+  `if (!env.LOCAL_UPDATE) return fail(...)` and import their Node module via
+  `await import('../local/...')` — never a static import in `src/lib/*`.
+- WiFi (`wifiStatus/wifiScan/wifiProfiles/wifiConnect/wifiProfile/wifiTrial*`)
+  runs `nmcli` as the service user; install.sh installs a polkit rule
+  (`50-jam-masjid-wifi.{pkla,rules}`). Connection changes use a 120 s trial in
+  `db/wifi-trial.json`; `pulihkanTrial()` is called at server start.
 - Session is a signed cookie, not server state; there is no logout store to clear.
 
 ## Display template rules

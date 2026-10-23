@@ -152,7 +152,8 @@ var app = {
     wallet: '<rect x="3" y="6" width="18" height="13" rx="2"/><path d="M3 10h18"/><circle cx="16.5" cy="14.5" r="1"/>',
     cloud: '<path d="M17.5 19a4.5 4.5 0 0 0 .9-8.9 6 6 0 0 0-11.7 1.7A4 4 0 0 0 6 19h11.5z"/><path d="M12 12v6"/><path d="M9 15l3-3 3 3"/>',
     image: '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="8.5" cy="8.5" r="1.5"/><path d="M21 15l-5-5L5 21"/>',
-    update: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>'
+    update: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/>',
+    wifi: '<path d="M5 12.55a11 11 0 0 1 14 0"/><path d="M1.42 9a16 16 0 0 1 21.16 0"/><path d="M8.53 16.11a6 6 0 0 1 6.95 0"/><circle cx="12" cy="20" r="1"/>'
   },
 
   // Kemenag sync status summary for the menu subtitle
@@ -180,6 +181,13 @@ var app = {
       back ? '<a class="back-link" href="#/">&#8249; Kembali</a>' : ''
     )
     window.scrollTo(0, 0)
+  }
+
+  // Escape untuk nilai dinamis (SSID bisa berisi karakter HTML).
+  function esc(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;').replace(/'/g, '&#39;')
   }
 
   function field(label, name, value, opts) {
@@ -281,6 +289,7 @@ var app = {
       row('kas', I.wallet, 'gold', 'Kas masjid', app.kasRingkasan()) +
       '</div>' +
       '<div class="group-label">Lainnya</div><div class="group-card">' +
+      row('wifi', I.wifi, '', 'WiFi', 'pindai · sambung · prioritas') +
       row('remote', I.cloud, '', 'Remote (Tailscale)', ((db.tailscale && db.tailscale.pengurus_emails) || []).length + ' email pengurus') +
       row('password', I.lock, '', 'Ganti password', '') +
       row('update', I.update, '', 'Update sistem', 'perbarui ke versi terbaru') +
@@ -1037,6 +1046,285 @@ var app = {
       })
     }
     muatStatus()
+  }
+
+  // ------------------------------------------------ WiFi (lokal saja)
+  // Pindai, sambung, dan kelola profil melalui NetworkManager (nmcli).
+  // Pergantian jaringan memakai masa uji 120 dtk: bila admin tidak menekan
+  // "Konfirmasi", server mengembalikan konfigurasi lama otomatis supaya STB
+  // tidak hilang dari jaringan (termasuk Tailscale).
+  app.pages['wifi'] = function () {
+    setHeader('WiFi', true)
+
+    var polling = null
+    var countdown = null
+    var tokenAktif = null
+
+    function stopPolling() {
+      if (polling) { clearInterval(polling); polling = null }
+      if (countdown) { clearInterval(countdown); countdown = null }
+    }
+    $(window).off('hashchange.wifi').on('hashchange.wifi', stopPolling)
+
+    $c().html(
+      '<div class="card" id="wifi-status"><p class="field-note">Memuat status jaringan...</p></div>' +
+      '<div class="card" id="wifi-trial" style="display:none"></div>' +
+      '<div class="card">' +
+      '<div class="field"><label>WiFi di sekitar</label>' +
+      '<p class="field-note">Pilih jaringan lalu masukkan password. SSID tersembunyi bisa diisi manual di bawah.</p></div>' +
+      '<div id="wifi-scan"><p class="field-note">Memindai...</p></div>' +
+      '<button class="btn btn-primary btn-block" id="btn-wifi-rescan" type="button">Pindai ulang</button>' +
+      '</div>' +
+      '<div class="card">' +
+      '<div class="field"><label>SSID tersembunyi / manual</label>' +
+      field('Nama jaringan (SSID)', 'wifi_ssid_manual', '', { maxlength: 32, required: false }) +
+      field('Password', 'wifi_pass_manual', '', { type: 'password', maxlength: 63, required: false }) +
+      '<p class="field-note">Kosongkan password untuk jaringan terbuka. Perangkat akan mengingat jaringan ini.</p>' +
+      '<button class="btn btn-primary btn-block" id="btn-wifi-manual" type="button">Sambung</button>' +
+      '</div></div>' +
+      '<div class="card">' +
+      '<div class="field"><label>Profil tersimpan</label>' +
+      '<p class="field-note">Profil dengan prioritas utama dipilih lebih dulu saat STB menyala.</p></div>' +
+      '<div id="wifi-profiles"><p class="field-note">Memuat profil...</p></div>' +
+      '</div>'
+    )
+
+    // --- status -------------------------------------------------------------
+    function renderStatus(st) {
+      if (!st) return
+      var w = st.wlan || {}
+      var e = st.ethernet || {}
+      var t = st.tailscale || {}
+      var html =
+        '<div class="field"><label>Status jaringan</label>' +
+        '<p class="field-note">' +
+        'Kabel: ' + (e.terhubung ? 'tersambung' + (e.ip ? ' · ' + esc(e.ip) : '') : 'tidak tersambung') + '<br>' +
+        'WiFi: ' + (w.terhubung
+          ? esc(w.ssid || 'tersambung') + (w.sinyal ? ' · sinyal ' + w.sinyal + '%' : '') + (w.ip ? ' · ' + esc(w.ip) : '')
+          : 'tidak tersambung') + '<br>' +
+        'Tailscale: ' + (t.aktif ? esc(t.ip) : 'belum aktif') + '<br>' +
+        'Internet: ' + (st.internet ? 'tersedia' : 'tidak tersedia') +
+        '</p></div>'
+      $('#wifi-status').html(html)
+    }
+
+    function renderTrial(tr) {
+      var $box = $('#wifi-trial')
+      if (!tr || !tr.aktif) {
+        tokenAktif = null
+        $box.hide().empty()
+        return
+      }
+      tokenAktif = tr.token
+      $box.show().html(
+        '<div class="field"><label>Uji koneksi — konfirmasi diperlukan</label>' +
+        '<p class="field-note">WiFi <b>' + esc(tr.ssidBaru) + '</b> baru saja dipakai. ' +
+        'Bila halaman ini tetap terbuka, tekan Konfirmasi. Tanpa konfirmasi, ' +
+        'pengaturan dikembalikan ke <b>' + esc(tr.ssidLama || 'koneksi sebelumnya') + '</b> dalam ' +
+        '<span id="wifi-sisa">' + (tr.sisaDetik || 0) + '</span> detik.</p></div>' +
+        '<div class="btn-row">' +
+        '<button class="btn btn-primary" id="btn-trial-ok" type="button">Konfirmasi</button>' +
+        '<button class="btn btn-ghost" id="btn-trial-cancel" type="button">Batalkan</button>' +
+        '</div>'
+      )
+      if (countdown) clearInterval(countdown)
+      var sisa = Number(tr.sisaDetik) || 0
+      countdown = setInterval(function () {
+        sisa = Math.max(0, sisa - 1)
+        var $s = $('#wifi-sisa')
+        if (!$s.length) { clearInterval(countdown); countdown = null; return }
+        $s.text(sisa)
+        if (sisa === 0) { clearInterval(countdown); countdown = null; muatStatus() }
+      }, 1000)
+
+      $('#btn-trial-ok').on('click', function () {
+        var $btn = $(this).prop('disabled', true).text('Menyimpan...')
+        app.api('wifiTrialConfirm', { token: tr.token }).done(function (res) {
+          if (res.success) {
+            app.toast('success', 'WiFi ' + (res.data.ssid || '') + ' tersimpan')
+            muatStatus(); muatProfil()
+          } else {
+            app.toast('danger', res.data)
+            $btn.prop('disabled', false).text('Konfirmasi')
+          }
+        })
+      })
+      $('#btn-trial-cancel').on('click', function () {
+        var $btn = $(this).prop('disabled', true).text('Mengembalikan...')
+        app.api('wifiTrialCancel', { token: tr.token }).done(function (res) {
+          if (res.success) app.toast('success', 'Koneksi dikembalikan')
+          else app.toast('danger', res.data)
+          muatStatus(); muatProfil()
+        }).always(function () { $btn.prop('disabled', false).text('Batalkan') })
+      })
+    }
+
+    function muatStatus() {
+      app.api('wifiStatus').done(function (res) {
+        if (!res.success) {
+          $('#wifi-status').html('<p class="field-note">' + esc(res.data) + '</p>')
+          $('#wifi-scan').html('')
+          $('#wifi-profiles').html('')
+          return
+        }
+        renderStatus(res.data)
+        renderTrial(res.data.trial)
+      }).fail(function () {
+        $('#wifi-status').html('<p class="field-note">Gagal menghubungi server.</p>')
+      })
+    }
+
+    // --- pindai -------------------------------------------------------------
+    function sambung(ssid, password, hidden, terbuka, $btn) {
+      var teks = $btn.text()
+      $btn.prop('disabled', true).text('Menyambung...')
+      app.api('wifiConnect', { ssid: ssid, password: password, hidden: hidden ? '1' : '0', terbuka: terbuka ? '1' : '0' })
+        .done(function (res) {
+          if (!res.success) { app.toast('danger', res.data); $btn.prop('disabled', false).text(teks); return }
+          app.toast('success', 'Tersambung ke ' + (res.data.ssid || ssid))
+          muatStatus(); muatProfil()
+        })
+        .fail(function () { app.toast('danger', 'Gagal menghubungi server'); $btn.prop('disabled', false).text(teks) })
+    }
+
+    function renderScan(list) {
+      var $box = $('#wifi-scan')
+      if (!list || !list.length) {
+        $box.html('<p class="field-note">Tidak ada jaringan ditemukan.</p>')
+        return
+      }
+      $box.html(list.map(function (j, i) {
+        return '<div class="list-card wifi-row" data-i="' + i + '">' +
+          '<div class="list-card-head">' +
+          '<span class="list-card-title">' + esc(j.ssid) + (j.aktif ? ' · terpakai' : '') + '</span>' +
+          '<span class="wifi-signal">' + j.sinyal + '%</span>' +
+          '</div>' +
+          '<p class="field-note">' + (j.terbuka ? 'terbuka' : esc(j.keamanan || 'terkunci')) + '</p>' +
+          '<div class="wifi-pass" style="display:none">' +
+          '<input class="input" type="password" placeholder="Password WiFi" maxlength="63">' +
+          '</div>' +
+          '<div class="btn-row">' +
+          '<button class="btn btn-sm btn-primary btn-wifi-connect" type="button">Sambung</button>' +
+          '</div></div>'
+      }).join(''))
+
+      $box.find('.btn-wifi-connect').on('click', function () {
+        var $card = $(this).closest('.wifi-row')
+        var j = list[Number($card.data('i'))]
+        var $pass = $card.find('.wifi-pass')
+        if (j.aktif) { app.toast('warning', 'Sudah terhubung ke jaringan ini'); return }
+        if (!j.terbuka && !$pass.is(':visible')) { $pass.show().find('input').focus(); return }
+        sambung(j.ssid, $pass.find('input').val(), false, j.terbuka, $(this))
+      })
+    }
+
+    function muatScan() {
+      $('#wifi-scan').html('<p class="field-note">Memindai...</p>')
+      app.api('wifiScan').done(function (res) {
+        if (res.success) renderScan(res.data.jaringan)
+        else $('#wifi-scan').html('<p class="field-note">' + esc(res.data) + '</p>')
+      }).fail(function () {
+        $('#wifi-scan').html('<p class="field-note">Gagal memindai.</p>')
+      })
+    }
+
+    // --- profil -------------------------------------------------------------
+    function renderProfil(list) {
+      var $box = $('#wifi-profiles')
+      if (!list || !list.length) {
+        $box.html('<p class="field-note">Belum ada profil WiFi tersimpan.</p>')
+        return
+      }
+      $box.html(list.map(function (p, i) {
+        return '<div class="list-card wifi-profile" data-i="' + i + '">' +
+          '<div class="list-card-head">' +
+          '<span class="list-card-title">' + esc(p.ssid || p.nama) + (p.aktif ? ' · aktif' : '') + '</span>' +
+          (p.prioritas > 0 ? '<span class="wifi-priority">utama</span>' : '') +
+          '</div>' +
+          '<div class="switch-row"><span class="switch-label">Sambung otomatis</span>' +
+          '<span class="switch"><input type="checkbox" class="wifi-auto"' + (p.autoconnect ? ' checked' : '') + '>' +
+          '<span class="track"></span></span></div>' +
+          '<div class="btn-row">' +
+          (p.aktif ? '' : '<button class="btn btn-sm btn-primary btn-wifi-use" type="button">Sambung</button>') +
+          '<button class="btn btn-sm btn-ghost btn-wifi-main" type="button">Jadikan utama</button>' +
+          '<button class="btn btn-sm btn-danger btn-wifi-del" type="button">Hapus</button>' +
+          '</div></div>'
+      }).join(''))
+
+      $box.find('.wifi-auto').on('change', function () {
+        var p = list[Number($(this).closest('.wifi-profile').data('i'))]
+        var $el = $(this)
+        app.api('wifiProfile', { uuid: p.uuid, action: 'autoconnect', nilai: $el.is(':checked') ? '1' : '0' })
+          .done(function (res) {
+            if (!res.success) { app.toast('danger', res.data); $el.prop('checked', !$el.is(':checked')) }
+            else app.toast('success', 'Pengaturan disimpan')
+          })
+      })
+      $box.find('.btn-wifi-use').on('click', function () {
+        var p = list[Number($(this).closest('.wifi-profile').data('i'))]
+        var $btn = $(this).prop('disabled', true).text('Menyambung...')
+        app.api('wifiProfile', { uuid: p.uuid, action: 'activate' }).done(function (res) {
+          if (!res.success) { app.toast('danger', res.data); $btn.prop('disabled', false).text('Sambung'); return }
+          app.toast('success', 'Tersambung ke ' + (p.ssid || p.nama))
+          muatStatus(); muatProfil()
+        })
+      })
+      $box.find('.btn-wifi-main').on('click', function () {
+        var p = list[Number($(this).closest('.wifi-profile').data('i'))]
+        var $btn = $(this).prop('disabled', true).text('Menyimpan...')
+        app.api('wifiProfile', { uuid: p.uuid, action: 'utama' }).done(function (res) {
+          if (!res.success) { app.toast('danger', res.data); $btn.prop('disabled', false).text('Jadikan utama'); return }
+          app.toast('success', 'Profil utama diperbarui')
+          muatProfil()
+        })
+      })
+      $box.find('.btn-wifi-del').on('click', function () {
+        var p = list[Number($(this).closest('.wifi-profile').data('i'))]
+        var $btn = $(this)
+        if (!$btn.data('confirm')) {
+          $btn.data('confirm', true).text('Ketuk lagi')
+          setTimeout(function () { $btn.data('confirm', false).text('Hapus') }, 4000)
+          return
+        }
+        app.api('wifiProfile', { uuid: p.uuid, action: 'delete' }).done(function (res) {
+          if (!res.success) app.toast('danger', res.data)
+          else app.toast('success', 'Profil dihapus')
+          muatProfil()
+        })
+      })
+    }
+
+    function muatProfil() {
+      $('#wifi-profiles').html('<p class="field-note">Memuat profil...</p>')
+      app.api('wifiProfiles').done(function (r) {
+        if (r.success) renderProfil(r.data.profil)
+        else $('#wifi-profiles').html('<p class="field-note">' + esc(r.data) + '</p>')
+      }).fail(function () {
+        $('#wifi-profiles').html('<p class="field-note">Gagal memuat profil.</p>')
+      })
+    }
+
+    $('#btn-wifi-rescan').on('click', muatScan)
+    $('#btn-wifi-manual').on('click', function () {
+      var ssid = $('[name=wifi_ssid_manual]').val()
+      var pass = $('[name=wifi_pass_manual]').val()
+      if (!String(ssid || '').trim()) { app.toast('warning', 'SSID wajib diisi'); return }
+      sambung(ssid, pass, true, !pass, $(this))
+    })
+
+    muatStatus()
+    muatScan()
+    muatProfil()
+
+    // Polling ringan: status + trial (hanya saat halaman ini terbuka).
+    polling = setInterval(function () {
+      if (!$('#wifi-status').length) { stopPolling(); return }
+      app.api('wifiStatus').done(function (res) {
+        if (!res.success) return
+        renderStatus(res.data)
+        renderTrial(res.data.trial)
+      })
+    }, 5000)
   }
 
   // ------------------------------------------------ update sistem (lokal saja)
