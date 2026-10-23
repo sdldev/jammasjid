@@ -515,9 +515,12 @@ h1,h2,h3,h4,h5{
    - JANGAN pakai will-change:transform di sini. Di software compositing,
      promote layer ini memaksa rasterisasi ulang seluruh layar tiap frame →
      proses GPU Chromium spin ~47% CPU terus-menerus (STB tersendat/stuck).
-   - contain:content + overflow:hidden membatasi area repaint ke elemen ini. */
+   - WAJIB contain:strict (bukan content): hanya strict yang mengisolasi
+     size+layout+paint sehingga animasi translateX tidak memicu repaint
+     seluruh viewport. Diukur di STB: content→47%, strict→0%.
+   - Elemen punya width/height eksplisit, jadi containment ukuran aman. */
 #running-text{
-	contain: content;
+	contain: strict;
 	overflow: hidden;
 }
 #running-text .rt-track{
