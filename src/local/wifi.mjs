@@ -262,10 +262,30 @@ export function buatService(opts = {}) {
     return { ok: true, profil: wifi }
   }
 
+  // Profil WiFi aktif saja (tanpa query per-profil). Dipakai statusJaringan
+  // yang dipanggil berkala — hindari N panggilan nmcli tiap polling.
   async function profilAktifWifi() {
-    const r = await profilSemua()
-    if (!r.ok) return null
-    return r.profil.find((p) => p.aktif) || null
+    const a = await nmcli(['-t', '-f', 'NAME,UUID,TYPE', 'connection', 'show', '--active'], 10_000)
+    if (!a.ok) return null
+    let uuid = ''
+    let nama = ''
+    for (const line of a.stdout.split('\n')) {
+      const f = pecahTerse(line)
+      if (f.length >= 3 && f[2] === '802-11-wireless') { nama = f[0]; uuid = f[1]; break }
+    }
+    if (!uuid) return null
+    const d = await nmcli(['-t', '-f', '802-11-wireless.ssid', 'connection', 'show', 'uuid', uuid], 10_000)
+    let ssid = ''
+    if (d.ok) {
+      for (const line of d.stdout.split('\n')) {
+        const i = line.indexOf(':')
+        if (i > 0 && line.slice(0, i).startsWith('802-11-wireless.ssid')) {
+          ssid = line.slice(i + 1).trim()
+          break
+        }
+      }
+    }
+    return { uuid, nama, ssid }
   }
 
   async function ipDevice(dev) {
@@ -305,7 +325,12 @@ export function buatService(opts = {}) {
     let ssid = ''
     let sinyal = 0
     if (wlan.state === 'connected') {
-      const wifiList = await nmcli(['-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list'], 15_000)
+      // --rescan no: JANGAN memicu scan radio dari polling status. Scan
+      // memakan waktu ±1-5 dtk dan mengganggu koneksi; daftar jaringan punya
+      // tombol/jalur sendiri (pindaiWifi).
+      const wifiList = await nmcli([
+        '-t', '-f', 'IN-USE,SSID,SIGNAL,SECURITY', 'device', 'wifi', 'list', '--rescan', 'no'
+      ], 15_000)
       if (wifiList.ok) {
         const aktif = parseScan(wifiList.stdout).find((j) => j.aktif)
         if (aktif) { ssid = aktif.ssid; sinyal = aktif.sinyal }
