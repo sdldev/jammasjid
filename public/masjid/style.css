@@ -511,10 +511,18 @@ h1,h2,h3,h4,h5{
 }
 
 /* ============== Running text: CSS animation replacing <marquee> ============== */
+/* PENTING (perf di STB Amlogic tanpa GPU hardware):
+   - JANGAN pakai will-change:transform di sini. Di software compositing,
+     promote layer ini memaksa rasterisasi ulang seluruh layar tiap frame →
+     proses GPU Chromium spin ~47% CPU terus-menerus (STB tersendat/stuck).
+   - contain:content + overflow:hidden membatasi area repaint ke elemen ini. */
+#running-text{
+	contain: content;
+	overflow: hidden;
+}
 #running-text .rt-track{
 	display:inline-block;
 	white-space:nowrap;
-	will-change:transform;
 	animation: rt-scroll linear infinite;
 	animation-duration: var(--dur-rt);
 }
